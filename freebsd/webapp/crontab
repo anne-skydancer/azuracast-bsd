@@ -1,0 +1,50 @@
+# freebsd/webapp/crontab
+#
+# Replaces supercronic (util/docker/web/setup/supercronic.sh,
+# util/docker/web/service.full/cron.conf) with FreeBSD's native cron(8),
+# driven from this per-user crontab (no user-name column — see install
+# instructions below, this is NOT /etc/crontab format).
+#
+# Install with:
+#   crontab -u azuracast freebsd/webapp/crontab
+#
+# Source-of-truth: util/docker/web/cron/azuracast, which uses supercronic's
+# extended 7-field syntax (sec min hour dom mon dow year):
+#   0 * * * * * * azuracast_cli azuracast:sync:run
+#   0 30 */6 * * * temp_cleanup
+#   0 15 23 * * * azuracast_update_blocklist
+# All three fire at second 0 of their minute, which is a no-op distinction
+# for standard 5-field cron(8) below (no seconds field to begin with).
+#
+# NOTE: `azuracast_cli` is a thin wrapper around
+# `php backend/bin/console` run from /var/azuracast/www as the azuracast
+# user (see util/docker/web/scripts/azuracast_cli). This change does not
+# deploy the PHP application itself, so the path below
+# (/usr/local/www/azuracast) is a placeholder — update AZURACAST_PATH to
+# wherever the app is actually checked out on this jail before enabling.
+
+AZURACAST_PATH=/usr/local/www/azuracast
+PATH=/usr/local/bin:/usr/bin:/bin
+
+# Runs the minute's due synchronization tasks (now playing, station
+# checks, media sync, etc. — see backend/src/Console/Command/Sync/RunnerCommand.php).
+* * * * * php ${AZURACAST_PATH}/backend/bin/console azuracast:sync:run >> /var/log/azuracast/cron.log 2>&1
+
+# Cleans up stale temp files every 6 hours at :30 (mirrors
+# util/docker/web/scripts/temp_cleanup, which ran `tmpreaper 12h` against
+# nginx/sftpgo temp dirs and per-station temp dirs). tmpreaper is
+# installed by freebsd/webapp/00-packages.sh.
+30 */6 * * * /usr/local/bin/tmpreaper 12h --protect '.tmpreaper' --protect 'proxies' --protect 'service_*.log' --protect 'active_server' --protect '*.db' /var/azuracast/www_tmp/nginx_client /var/azuracast/www_tmp/nginx_fastcgi /var/azuracast/www_tmp/nginx_cache /var/azuracast/www_tmp/sftpgo_temp /var/azuracast/stations/*/temp /var/azuracast/www_tmp >> /var/log/azuracast/cron.log 2>&1
+
+# Daily nginx bad-bot blocklist refresh (mirrors
+# util/docker/web/scripts/azuracast_update_blocklist). Only meaningful if
+# the nginx-ultimate-bad-bot-blocker scripts were installed and
+# NGINX_BLOCK_BOTS is enabled — left commented out by default since that
+# blocker isn't installed by any script in this directory.
+# 15 23 * * * /usr/local/sbin/update-ngxblocker -n >> /var/log/azuracast/cron.log 2>&1
+
+# Optional: monthly refresh of the MaxMind DB-IP Lite GeoIP database
+# (mirrors util/docker/web/setup/dbip.sh, which only ran once at image
+# build time). Not enabled by default — uncomment if you want it kept
+# current. Requires MAXMIND account/URL per db-ip.com's current terms.
+# 0 4 1 * * fetch -o /var/azuracast/dbip/dbip-city-lite.mmdb.gz "https://download.db-ip.com/free/dbip-city-lite-$(date +\%Y)-$(date +\%m).mmdb.gz" && gunzip -f /var/azuracast/dbip/dbip-city-lite.mmdb.gz >> /var/log/azuracast/cron.log 2>&1

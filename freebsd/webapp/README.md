@@ -1,0 +1,210 @@
+# webapp jail (FreeBSD, native)
+
+This directory replaces AzuraCast's Dockerized web/app image with a
+native FreeBSD jail install. This jail (`webapp`, the value of
+`WEBAPP_JAIL_IP` in `freebsd/env.conf` (currently `10.8.0.110`) / the
+value of `WEBAPP_JAIL_HOSTNAME` (currently `webapp.amc202d.lan`)) runs
+nginx, php-fpm (PHP 8.5, matching the Docker build's `php:8.5-fpm-trixie`),
+Valkey, Centrifugo, SFTPGo, cron, and supervisord (which also manages
+the per-station stream-engine processes; those are generated
+dynamically by the application and are out of scope here — only the
+base platform is set up by this directory).
+
+All of the addresses, paths, and hostnames mentioned in this README come
+from `freebsd/env.conf` — edit that file first if your deployment uses a
+different layout (see `freebsd/README.md`).
+
+**MariaDB and Icecast are NOT set up by anything in this directory.**
+They run in their own separate jails:
+- MariaDB: `mariadb` jail, the value of `MARIADB_JAIL_IP` in
+  `freebsd/env.conf` (currently `10.8.0.100`) — see `freebsd/mariadb/`
+- Icecast: existing `icecast` jail
+
+This jail only needs to be able to *reach* MariaDB over TCP at
+`MARIADB_JAIL_IP:MARIADB_PORT` (currently `10.8.0.100:3306`) — it does
+not install or manage it.
+
+## Files here
+
+| File | Purpose |
+|---|---|
+| `00-packages.sh` | Installs nginx, php85 + extensions, Valkey, ffmpeg, git, sudo, etc. via `pkg`; creates the `azuracast` system user and `/var/azuracast/*` directory layout. |
+| `10-centrifugo.sh` | Builds Centrifugo v6.9.0 from source (`go install`) and installs it to `/usr/local/bin/centrifugo`. |
+| `11-sftpgo.sh` | Builds SFTPGo v2.6.4 from source (`go install`) and installs it to `/usr/local/bin/sftpgo`. |
+| `20-supervisor.sh` | Installs supervisord (via `pip`) and creates its socket/log directories. |
+| `supervisord.conf` | Base (non-station) supervisord config — install to `/usr/local/etc/supervisord.conf`. |
+| `crontab` | Per-user crontab (for the `azuracast` user) replacing supercronic. |
+| `rc.d/azuracast` | rc.d script — waits for MariaDB, runs one-time setup/migrations, then starts supervisord. Install to `/usr/local/etc/rc.d/azuracast`. |
+| `nginx.conf` | Adapted nginx config — install to `/usr/local/etc/nginx/nginx.conf`. |
+| `centrifugo-config.toml` | Adapted Centrifugo config — install to `/var/azuracast/centrifugo/config.toml`. |
+| `sftpgo.json` | Adapted SFTPGo config — install to `/var/azuracast/sftpgo/sftpgo.json`. |
+| `valkey.conf` | Valkey config, scoped to loopback + unix socket — install to `/usr/local/etc/valkey.conf` (or wherever the package's `valkey_config` rcvar points). |
+| `configure-db.sh` | Interactive first-install script: asks whether you have an existing DB server or want the default `mariadb` jail, then writes `MYSQL_*` into `azuracast.env`. |
+
+## Setup order
+
+1. `sh freebsd/webapp/00-packages.sh`
+   Installs the base package set and creates the `azuracast` user +
+   `/var/azuracast` directory tree. Every package name has been verified
+   against FreshPorts (2026-07) — see the header comment for the two
+   naming gotchas it corrects (`php85-pecl-redis`/`php85-pecl-uuid`, not
+   the plain `php85-redis`/`php85-uuid` you'd guess, and `php85-opcache`
+   no longer existing as a separate package — opcache ships bundled in
+   base `php85` now).
+
+2. `sh freebsd/webapp/10-centrifugo.sh`
+   Then copy the config into place:
+   ```sh
+   cp freebsd/webapp/centrifugo-config.toml /var/azuracast/centrifugo/config.toml
+   ```
+
+3. `sh freebsd/webapp/11-sftpgo.sh`
+   Then copy the config and generate host keys:
+   ```sh
+   cp freebsd/webapp/sftpgo.json /var/azuracast/sftpgo/sftpgo.json
+   ssh-keygen -t rsa     -b 4096 -f /var/azuracast/storage/sftpgo/id_rsa     -q -N ""
+   ssh-keygen -t ecdsa   -b 521  -f /var/azuracast/storage/sftpgo/id_ecdsa   -q -N ""
+   ssh-keygen -t ed25519         -f /var/azuracast/storage/sftpgo/id_ed25519 -q -N ""
+   chown -R azuracast:azuracast /var/azuracast/storage/sftpgo
+   ```
+
+4. `sh freebsd/webapp/20-supervisor.sh`
+   Then copy the base supervisord config:
+   ```sh
+   cp freebsd/webapp/supervisord.conf /usr/local/etc/supervisord.conf
+   ```
+
+5. Copy the nginx config:
+   ```sh
+   cp freebsd/webapp/nginx.conf /usr/local/etc/nginx/nginx.conf
+   ```
+   Also apply the M3U8 MIME-type fix Docker's `nginx.sh` applies
+   (`application/vnd.apple.mpegurl` -> `application/x-mpegurl`) to
+   `/usr/local/etc/nginx/mime.types` by hand — this wasn't scripted
+   here since it's a one-line edit to a package-owned file.
+
+6. Install and enable the rc.d script:
+   ```sh
+   cp freebsd/webapp/rc.d/azuracast /usr/local/etc/rc.d/azuracast
+   chmod +x /usr/local/etc/rc.d/azuracast
+   sysrc azuracast_enable=YES
+   ```
+   Set `azuracast_path` (where the PHP application is actually
+   deployed — deploying the app itself is out of scope for this
+   change) via `/etc/rc.conf.d/azuracast`, e.g.:
+   ```sh
+   echo 'azuracast_path="/usr/local/www/azuracast"' >> /etc/rc.conf.d/azuracast
+   ```
+
+7. Install the crontab for the `azuracast` user (update `AZURACAST_PATH`
+   inside the file first, same caveat as above):
+   ```sh
+   crontab -u azuracast freebsd/webapp/crontab
+   ```
+
+8. Configure the database connection (interactive, first-install only):
+   ```sh
+   export AZURACAST_PATH=/usr/local/www/azuracast   # wherever the app is deployed
+   sh freebsd/webapp/configure-db.sh
+   ```
+   Asks whether you already have a MariaDB/MySQL-compatible server set
+   up. If yes, it prompts for that server's host/port/database/user/
+   password directly. If no, it defaults to this project's documented
+   topology (the dedicated `mariadb` jail at `MARIADB_JAIL_IP:MARIADB_PORT`,
+   currently `10.8.0.100:3306` — see `freebsd/mariadb/README.md`) and only
+   prompts for the database name/
+   user/password, which it then reminds you to provision on that jail
+   with matching values. Either way it writes `MYSQL_*` into
+   `<AZURACAST_PATH>/azuracast.env` (mode 600, `azuracast`-owned),
+   which is the exact file `backend/src/Environment.php` reads —
+   confirm that file is `.gitignore`d wherever the app is deployed from,
+   since it now holds a real password.
+
+9. Start everything: `service azuracast start`
+   (this waits for MariaDB, runs `azuracast:setup --init`, then starts
+   supervisord, which brings up nginx/php-fpm/centrifugo/sftpgo).
+
+### Valkey
+
+Valkey/Redis is installed by `00-packages.sh` (`pkg install ... valkey`)
+but is **not** managed by supervisord — it runs as its own native
+FreeBSD rc.d service, independent of the `azuracast` service above.
+`00-packages.sh` does not enable or configure it any further than
+installing the package, so before step 8 you still need to:
+
+```sh
+sysrc valkey_enable=YES
+cp freebsd/webapp/valkey.conf /usr/local/etc/valkey.conf
+```
+
+(confirm `/usr/local/etc/valkey.conf` against the installed package's
+default `valkey_config` rcvar — adjust the path if it differs). Note
+`valkey.conf` here deliberately binds to `127.0.0.1` + a unix socket
+rather than `0.0.0.0` as the Docker source does — nothing outside this
+jail needs to reach Valkey, so it's scoped down the same way the
+`mariadb` jail's `bind-address` is.
+
+Then:
+```sh
+service valkey start
+```
+
+## `.env` / `azuracast.env` values this jail needs
+
+The `MYSQL_*` block is written for you by `configure-db.sh` (step 8
+above) rather than hand-edited — see that step for the interactive
+"do you already have a DB server?" flow. The rest of the values this
+jail needs, either set alongside it or already implied by the default
+topology:
+
+```
+APPLICATION_ENV=production
+
+ENABLE_REDIS=true
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+```
+
+`REDIS_HOST` stays `localhost` because Valkey runs inside this same
+jail, not a separate one. If you chose the default topology in
+`configure-db.sh` (no existing server), `MYSQL_HOST` ends up as the
+separate `mariadb` jail (the value of `MARIADB_JAIL_IP` in
+`freebsd/env.conf`, currently `10.8.0.100`) — see
+`freebsd/mariadb/README.md` for how that user/grant was provisioned
+(scoped to `'azuracast'@'WEBAPP_JAIL_IP'`, i.e. the value of
+`WEBAPP_JAIL_IP` (currently `10.8.0.110`), this jail's IP).
+
+These are the same env var names AzuraCast's `backend/src/Environment.php`
+already reads — no application code changes are required, only values.
+Where exactly the AzuraCast application itself gets deployed to (so
+`azuracast.env` has somewhere to live) is out of scope for this change.
+
+## Notes / things worth double-checking on the actual box
+
+- **PHP version**: matches the Docker build's `FROM php:8.5-fpm-trixie`
+  — `00-packages.sh` installs `php85*` packages. Verified against
+  FreshPorts (2026-07): `lang/php85` is a mature 8.5.8_1, not an early
+  snapshot.
+- **`security/openssl` version transition**: FreeBSD's pkg-message for
+  `security/openssl` (currently 3.0.21) warns of a base-port move from
+  OpenSSL 3.0 → 3.5 around 2026Q3 due to 3.0's EOL — worth checking
+  which side of that transition you land on when you actually run
+  `00-packages.sh`, in case pinning is needed.
+- **`audiowaveform`** (waveform preview generation) has no FreeBSD port
+  and is not installed anywhere in this directory — see the note in
+  `00-packages.sh` for manual build instructions if it's needed.
+- **MaxMind DB-IP GeoIP database** (`util/docker/web/setup/dbip.sh`) is
+  a data download, not a package; a commented-out monthly cron entry
+  for it is included in `crontab` but disabled by default.
+- **supervisord install method**: `20-supervisor.sh` uses `pip install
+  supervisor` to mirror the Docker build exactly; `sysutils/py-supervisor`
+  (e.g. `py311-supervisor`) is a `pkg`-only alternative noted in that
+  script's comments but not used by default.
+- **Centrifugo/SFTPGo versions**: pinned to v6.9.0 / v2.6.4 respectively,
+  matching `util/docker/web/setup/centrifugo.sh` and `sftpgo.sh` exactly.
+  Both are built from source via `go install` since neither publishes
+  FreeBSD binaries.
+- None of this was tested on an actual FreeBSD box as part of this
+  change — treat package names and paths as a well-researched first
+  draft, not a verified install.

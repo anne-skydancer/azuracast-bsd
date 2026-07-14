@@ -1,0 +1,138 @@
+#!/bin/sh
+#
+# freebsd/webapp/rc.d/azuracast
+#
+# PROVIDE: azuracast
+# REQUIRE: DAEMON NETWORKING valkey
+# KEYWORD: shutdown
+#
+# Install to /usr/local/etc/rc.d/azuracast (mode 0555) and enable with:
+#   sysrc azuracast_enable=YES
+#
+# Models the startup ORDER of util/docker/web/scripts/app_startup, but
+# collapses it: app_startup ran *inside* an already-running supervisord
+# (started with everything at autostart=false) and used supervisorctl to
+# sequence php-fpm/centrifugo -> nginx -> "start all" after waiting for
+# redis+db and running one-time setup. Here, Valkey is a separate
+# jail-local rc.d service (REQUIRE'd above, not waited-for over the
+# network), and every program in supervisord.conf is autostart=true
+# already (see the ordering note at the top of that file) — so this
+# script only needs to replicate the two steps that MUST happen before
+# supervisord starts anything at all:
+#   1. Wait for MariaDB (10.8.0.100:3306, separate jail) to accept TCP
+#      connections — same purpose as Docker's `uptime_wait db`.
+#   2. Run one-time setup / schema migrations — same purpose as
+#      Docker's `azuracast_cli azuracast:setup --init`.
+# Then it starts supervisord, which brings up nginx/php-fpm/centrifugo/
+# sftpgo (and, once configured, php-worker/php-nowplaying/per-station
+# programs) per supervisord.conf's own priorities.
+#
+# NOTE: AZURACAST_PATH below is a placeholder. This change does not
+# deploy the PHP application (out of scope — "no PHP application code"),
+# so set this to wherever `backend/bin/console` actually lives on this
+# jail before enabling the service, e.g. via /etc/rc.conf.d/azuracast:
+#   azuracast_path="/usr/local/www/azuracast"
+#   azuracast_db_host="10.8.0.100"
+#
+# azuracast_db_host has NO built-in default and MUST be set via
+# /etc/rc.conf.d/azuracast (or `sysrc azuracast_db_host=...`) — this rc.d
+# script runs standalone at jail boot, independent of the git checkout, so
+# it cannot source freebsd/env.conf itself. Set it to this deployment's
+# mariadb jail address (see MARIADB_JAIL_IP in freebsd/env.conf). Leaving
+# it unset causes the service to refuse to start rather than silently
+# falling back to someone else's IP.
+#   azuracast_db_port="3306"
+
+. /etc/rc.subr
+
+name="azuracast"
+rcvar="azuracast_enable"
+
+load_rc_config "$name"
+
+: ${azuracast_enable:="NO"}
+: ${azuracast_path:="/usr/local/www/azuracast"}
+: ${azuracast_db_host:=""}
+: ${azuracast_db_port:="3306"}
+: ${azuracast_db_wait_timeout:="120"}
+: ${azuracast_user:="azuracast"}
+
+supervisord_bin="/usr/local/bin/supervisord"
+supervisord_conf="/usr/local/etc/supervisord.conf"
+
+pidfile="/var/run/supervisord.pid"
+command="${supervisord_bin}"
+command_args="-c ${supervisord_conf}"
+
+start_precmd="azuracast_prestart"
+stop_cmd="azuracast_stop"
+status_cmd="azuracast_status"
+
+azuracast_wait_for_db()
+{
+    if [ -z "${azuracast_db_host}" ]; then
+        err 1 "azuracast_db_host must be set via sysrc (e.g. sysrc azuracast_db_host=<mariadb jail IP>)"
+    fi
+
+    echo "Waiting for MariaDB at ${azuracast_db_host}:${azuracast_db_port}..."
+
+    i=0
+    while ! nc -z -w1 "${azuracast_db_host}" "${azuracast_db_port}" >/dev/null 2>&1; do
+        i=$((i + 1))
+        if [ "$i" -ge "${azuracast_db_wait_timeout}" ]; then
+            err 1 "MariaDB (${azuracast_db_host}:${azuracast_db_port}) did not become reachable within ${azuracast_db_wait_timeout}s"
+        fi
+        sleep 1
+    done
+
+    echo "MariaDB is reachable."
+}
+
+azuracast_run_setup()
+{
+    console="${azuracast_path}/backend/bin/console"
+
+    if [ ! -x "${console}" ] && [ ! -f "${console}" ]; then
+        echo "WARNING: ${console} not found -- skipping azuracast:setup/migrations." 1>&2
+        echo "Set azuracast_path in rc.conf once the app is deployed." 1>&2
+        return 0
+    fi
+
+    echo "Running one-time AzuraCast setup/migrations..."
+
+    # azuracast:setup --init is the real command Docker's app_startup
+    # invokes via `azuracast_cli azuracast:setup --init`
+    # (backend/src/Console/Command/SetupCommand.php, --init flag forces
+    # `update=true`, i.e. it runs migrations + asset/settings init and
+    # is safe to run on every boot -- it does not reload fixtures).
+    su -m "${azuracast_user}" -c "cd '${azuracast_path}' && php '${console}' azuracast:setup --init" \
+        || err 1 "azuracast:setup --init failed"
+
+    # Best-effort ACME certificate fetch, same as app_startup
+    # ("azuracast_cli azuracast:acme:get-certificate || true").
+    su -m "${azuracast_user}" -c "cd '${azuracast_path}' && php '${console}' azuracast:acme:get-certificate" \
+        || echo "NOTE: ACME certificate fetch failed/skipped (non-fatal, matches Docker's app_startup behavior)."
+}
+
+azuracast_prestart()
+{
+    azuracast_wait_for_db
+    azuracast_run_setup
+    return 0
+}
+
+azuracast_stop()
+{
+    if [ -f "${pidfile}" ] && /usr/local/bin/supervisorctl -c "${supervisord_conf}" status >/dev/null 2>&1; then
+        /usr/local/bin/supervisorctl -c "${supervisord_conf}" shutdown
+    else
+        echo "supervisord does not appear to be running."
+    fi
+}
+
+azuracast_status()
+{
+    /usr/local/bin/supervisorctl -c "${supervisord_conf}" status
+}
+
+run_rc_command "$1"

@@ -1,0 +1,61 @@
+#
+# freebsd/mariadb/my.cnf.tmpl
+#
+# Rendered by freebsd/mariadb/00-install.sh (which substitutes the
+# MARIADB_JAIL_IP token below with the value from freebsd/env.conf)
+# directly to:
+#   /usr/local/etc/mysql/conf.d/azuracast.cnf
+# (the FreeBSD mariadb118-server package reads /usr/local/etc/mysql/my.cnf,
+# which by default includes everything under conf.d/*.cnf).
+#
+# This mirrors the settings AzuraCast bakes into its Docker image via
+# util/docker/mariadb/mariadb/db.cnf.tmpl and
+# util/docker/mariadb/setup/mariadb.sh, adapted for a single-purpose
+# FreeBSD jail (10.8.0.100 / mariadb.amc202d.lan) that ONLY runs MariaDB.
+#
+
+[mysqld]
+
+# --- Network binding -------------------------------------------------------
+# Bound to this jail's own IP rather than 127.0.0.1/localhost because
+# there is no shared /var/run/mysqld socket between jails -- the webapp
+# jail can only reach MariaDB over the network, so MariaDB has to be
+# listening on an address that's actually routable from there. Network-
+# level access control (restricting which hosts besides webapp can reach
+# this port) is left entirely to your own firewall policy, if any --
+# out of scope for this project.
+bind-address = @@MARIADB_JAIL_IP@@
+port = 3306
+
+# --- Charset / collation ----------------------------------------------------
+# Matches AzuraCast's expectations: backend/config/services.php configures
+# PDO with charset=utf8mb4 / collate=utf8mb4_general_ci, and the shipped
+# schema dump (util/docker/mariadb/mariadb/db.sql) creates the `azuracast`
+# database and all tables as utf8mb4 / utf8mb4_general_ci.
+character-set-server = utf8mb4
+collation-server = utf8mb4_general_ci
+
+# --- Connection / buffer tuning ---------------------------------------------
+# Same defaults AzuraCast's db.cnf.tmpl applies (MYSQL_MAX_CONNECTIONS,
+# MYSQL_INNODB_BUFFER_POOL_SIZE, MYSQL_INNODB_LOG_FILE_SIZE env vars in the
+# Docker image, defaulting to these values). Tune innodb_buffer_pool_size up
+# if this jail is given more RAM than the AzuraCast default assumes.
+max_connections = 100
+innodb_buffer_pool_size = 128M
+innodb_log_file_size = 16M
+
+# Reduce connection logging verbosity (matches db.cnf.tmpl).
+log_warnings = 1
+
+# Don't reverse-resolve client hostnames — avoids DNS stalls on connect,
+# matches util/docker/mariadb/setup/mariadb.sh's 05-skipcache.cnf.
+skip_name_resolve = ON
+
+# Slow query log is off by default in AzuraCast too (MYSQL_SLOW_QUERY_LOG=0).
+# Uncomment to enable if you need to diagnose slow queries:
+# slow_query_log = 1
+# slow_query_log_file = /var/log/mysql/slow.log
+# long_query_time = 0.2
+
+[client]
+default-character-set = utf8mb4

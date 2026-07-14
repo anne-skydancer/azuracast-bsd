@@ -1,0 +1,17 @@
+@@MARIADB_JAIL_NAME@@ {
+    host.hostname = "@@MARIADB_JAIL_HOSTNAME@@";
+    path = "@@MARIADB_JAIL_PATH@@";
+
+    vnet;
+    vnet.interface = "@@MARIADB_JAIL_EPAIR@@b";
+
+    exec.prestart  = "ifconfig @@MARIADB_JAIL_EPAIR@@ create";
+    exec.prestart += "ifconfig @@VM_PUBLIC_BRIDGE@@ addm @@MARIADB_JAIL_EPAIR@@a";
+    exec.prestart += "ifconfig @@MARIADB_JAIL_EPAIR@@a up";
+    exec.start    += "ifconfig @@MARIADB_JAIL_EPAIR@@b @@MARIADB_JAIL_IP@@/11 up";
+    exec.start    += "ifconfig @@MARIADB_JAIL_EPAIR@@b inet6 @@MARIADB_JAIL_IP6@@/64 up";
+    exec.start    += "route add default @@DEFAULT_ROUTE_V4@@";
+    exec.start    += "route add -6 default @@DEFAULT_ROUTE_V6_GW@@%@@MARIADB_JAIL_EPAIR@@b";
+    exec.start    += "/bin/sh /etc/rc";
+    exec.poststop  = "ifconfig @@MARIADB_JAIL_EPAIR@@a destroy";
+}

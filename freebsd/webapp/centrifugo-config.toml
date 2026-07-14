@@ -1,0 +1,58 @@
+# freebsd/webapp/centrifugo-config.toml
+#
+# Install to /var/azuracast/centrifugo/config.toml (started by supervisord
+# with `centrifugo -c /var/azuracast/centrifugo/config.toml`, directory
+# /var/azuracast/centrifugo -- see [program:centrifugo] in supervisord.conf).
+#
+# Adapted from util/docker/web/centrifugo/config.toml.tmpl. Docker
+# resolves this via dockerize using ENABLE_REDIS/REDIS_HOST/REDIS_PORT/
+# REDIS_DB env vars; since Valkey runs locally in this same jail
+# (REDIS_HOST=localhost per this jail's topology), the [engine] block
+# below is hardcoded to 127.0.0.1:6379/db 0 instead of templated. Update
+# it directly if Valkey's bind address/db index ever changes (see
+# freebsd's valkey.conf, ported from util/docker/redis/redis/redis.conf).
+
+[http_api]
+insecure = true
+
+[client]
+allowed_origins = ["*"]
+allow_anonymous_connect_without_token = true
+connect_include_server_time = true
+
+[admin]
+enabled = true
+insecure = true
+
+[uni_websocket]
+enabled = true
+
+[uni_sse]
+enabled = true
+
+[uni_http_stream]
+enabled = true
+
+[http_server]
+port = 6_020
+internal_port = 6_025
+
+[websocket]
+disabled = true
+
+[engine]
+redis.address = "127.0.0.1:6379"
+redis.db = 0
+redis.prefix = "centrifugo:c"
+type = "redis"
+
+[[channel.namespaces]]
+name = "station"
+history_size = 1
+history_ttl = "30s"
+allow_subscribe_for_client = true
+allow_subscribe_for_anonymous = true
+allow_history_for_client = true
+allow_history_for_anonymous = true
+force_recovery = true
+force_recovery_mode = "cache"

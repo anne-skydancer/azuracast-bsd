@@ -1,0 +1,17 @@
+@@WEBAPP_JAIL_NAME@@ {
+    host.hostname = "@@WEBAPP_JAIL_HOSTNAME@@";
+    path = "@@WEBAPP_JAIL_PATH@@";
+
+    vnet;
+    vnet.interface = "@@WEBAPP_JAIL_EPAIR@@b";
+
+    exec.prestart  = "ifconfig @@WEBAPP_JAIL_EPAIR@@ create";
+    exec.prestart += "ifconfig @@VM_PUBLIC_BRIDGE@@ addm @@WEBAPP_JAIL_EPAIR@@a";
+    exec.prestart += "ifconfig @@WEBAPP_JAIL_EPAIR@@a up";
+    exec.start    += "ifconfig @@WEBAPP_JAIL_EPAIR@@b @@WEBAPP_JAIL_IP@@/11 up";
+    exec.start    += "ifconfig @@WEBAPP_JAIL_EPAIR@@b inet6 @@WEBAPP_JAIL_IP6@@/64 up";
+    exec.start    += "route add default @@DEFAULT_ROUTE_V4@@";
+    exec.start    += "route add -6 default @@DEFAULT_ROUTE_V6_GW@@%@@WEBAPP_JAIL_EPAIR@@b";
+    exec.start    += "/bin/sh /etc/rc";
+    exec.poststop  = "ifconfig @@WEBAPP_JAIL_EPAIR@@a destroy";
+}
