@@ -9,7 +9,7 @@ use App\Entity\Station;
 use App\Entity\StationRemote;
 use App\Exception\NotFoundException;
 use App\Exception\StationUnsupportedException;
-use App\Radio\Backend\Liquidsoap;
+use App\Radio\Backend\BackendInterface;
 use App\Radio\Enums\AdapterTypeInterface;
 use App\Radio\Enums\BackendAdapters;
 use App\Radio\Enums\FrontendAdapters;
@@ -60,7 +60,7 @@ final class Adapters
         return $this->listAdaptersFromEnum(FrontendAdapters::cases(), $checkInstalled);
     }
 
-    public function getBackendAdapter(Station $station): ?Liquidsoap
+    public function getBackendAdapter(Station $station): ?BackendInterface
     {
         $className = $station->backend_type->getClass();
 
@@ -72,7 +72,7 @@ final class Adapters
     /**
      * @throws StationUnsupportedException
      */
-    public function requireBackendAdapter(Station $station): Liquidsoap
+    public function requireBackendAdapter(Station $station): BackendInterface
     {
         $backend = $this->getBackendAdapter($station);
 

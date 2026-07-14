@@ -1,0 +1,21 @@
+[package]
+name = "azuracast-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Rust replacement for AzuraCast's Liquidsoap streaming engine (skeleton phase)."
+
+[[bin]]
+name = "azuracast-engine"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+# default-tls (native-tls/OpenSSL) is disabled in favor of rustls so the engine
+# builds without a system OpenSSL dependency on FreeBSD.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

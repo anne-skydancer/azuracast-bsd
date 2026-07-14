@@ -32,7 +32,7 @@ use App\OpenApi;
 use App\Radio\Adapters;
 use App\Radio\Backend\Liquidsoap;
 use App\Radio\Enums\BackendAdapters;
-use App\Radio\Enums\LiquidsoapQueues;
+use App\Radio\Enums\AudioQueues;
 use App\Utilities\File;
 use App\Utilities\Time;
 use App\Utilities\Types;
@@ -394,7 +394,7 @@ final class BatchAction implements SingleActionInterface
 
                 $backend->enqueue(
                     $station,
-                    LiquidsoapQueues::Interrupting,
+                    AudioQueues::Interrupting,
                     $event->buildAnnotations()
                 );
             }
@@ -418,7 +418,7 @@ final class BatchAction implements SingleActionInterface
 
                     $backend->enqueue(
                         $station,
-                        LiquidsoapQueues::Interrupting,
+                        AudioQueues::Interrupting,
                         $event->buildAnnotations()
                     );
                 } catch (Throwable $e) {

@@ -13,12 +13,12 @@ use App\Nginx\CustomUrls;
 use App\Radio\AbstractLocalAdapter;
 use App\Radio\Backend\Liquidsoap\ConfigWriter;
 use App\Radio\Configuration;
-use App\Radio\Enums\LiquidsoapQueues;
+use App\Radio\Enums\AudioQueues;
 use LogicException;
 use Psr\Http\Message\UriInterface;
 use Symfony\Component\Process\Process;
 
-final class Liquidsoap extends AbstractLocalAdapter
+final class Liquidsoap extends AbstractLocalAdapter implements BackendInterface
 {
     public const string GLOBAL_CACHE_PATH = '/tmp/liquidsoap_cache';
     public const string USER_CACHE_DIR = '/liquidsoap_cache';
@@ -175,7 +175,7 @@ final class Liquidsoap extends AbstractLocalAdapter
 
     public function isQueueEmpty(
         Station $station,
-        LiquidsoapQueues $queue
+        AudioQueues $queue
     ): bool {
         $queueResult = $this->command(
             $station,
@@ -189,7 +189,7 @@ final class Liquidsoap extends AbstractLocalAdapter
      */
     public function enqueue(
         Station $station,
-        LiquidsoapQueues $queue,
+        AudioQueues $queue,
         string $musicFile
     ): array {
         return $this->command(

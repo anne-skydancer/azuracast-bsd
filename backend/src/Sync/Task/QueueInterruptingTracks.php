@@ -9,7 +9,7 @@ use App\Event\Radio\AnnotateNextSong;
 use App\Radio\Adapters;
 use App\Radio\AutoDJ\Queue;
 use App\Radio\Backend\Liquidsoap;
-use App\Radio\Enums\LiquidsoapQueues;
+use App\Radio\Enums\AudioQueues;
 use Monolog\LogRecord;
 use Psr\EventDispatcher\EventDispatcherInterface;
 
@@ -80,7 +80,7 @@ final class QueueInterruptingTracks extends AbstractTask
         }
 
         // Check that the interrupting queue is empty first.
-        if (!$backend->isQueueEmpty($station, LiquidsoapQueues::Interrupting)) {
+        if (!$backend->isQueueEmpty($station, AudioQueues::Interrupting)) {
             $this->logger->info('Interrupting queue: Queue is not empty!');
             return;
         }
@@ -99,7 +99,7 @@ final class QueueInterruptingTracks extends AbstractTask
             $track = $event->buildAnnotations();
 
             $this->logger->debug('Submitting request to AutoDJ.', ['track' => $track]);
-            $response = $backend->enqueue($station, LiquidsoapQueues::Interrupting, $track);
+            $response = $backend->enqueue($station, AudioQueues::Interrupting, $track);
             $this->logger->debug('AutoDJ request response', ['response' => $response]);
         }
     }

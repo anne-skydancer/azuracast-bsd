@@ -22,7 +22,7 @@ use App\Radio\Enums\AudioProcessingMethods;
 use App\Radio\Enums\CrossfadeModes;
 use App\Radio\Enums\FrontendAdapters;
 use App\Radio\Enums\HlsStreamProfiles;
-use App\Radio\Enums\LiquidsoapQueues;
+use App\Radio\Enums\AudioQueues;
 use App\Radio\Enums\StreamFormats;
 use App\Radio\Enums\StreamProtocols;
 use App\Radio\FallbackFile;
@@ -462,8 +462,8 @@ final class ConfigWriter implements EventSubscriberInterface
             );
         }
 
-        $requestsQueueName = LiquidsoapQueues::Requests->value;
-        $interruptingQueueName = LiquidsoapQueues::Interrupting->value;
+        $requestsQueueName = AudioQueues::Requests->value;
+        $interruptingQueueName = AudioQueues::Interrupting->value;
 
         $event->appendBlock(
             <<< LIQ

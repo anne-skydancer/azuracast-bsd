@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Radio\Enums;
 
-enum LiquidsoapQueues: string
+enum AudioQueues: string
 {
     case Requests = 'requests';
     case Interrupting = 'interrupting_requests';
