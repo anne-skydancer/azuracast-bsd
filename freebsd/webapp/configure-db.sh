@@ -118,6 +118,12 @@ case "$_has_existing" in
         echo "freebsd/mariadb/00-install.sh and 10-provision-db.sh with matching values"
         echo "before starting the azuracast service."
         echo
+        # Defaults to MariaDB's IPv4 address (MARIADB_JAIL_IP) -- MariaDB is
+        # dual-stack bound (see freebsd/mariadb/my.cnf.tmpl), so
+        # MARIADB_JAIL_IP6 from env.conf also works here and can be
+        # substituted manually below if you prefer IPv6 for this internal
+        # jail-to-jail link; IPv4 has no practical disadvantage over IPv6 on
+        # this internal network, so no interactive prompt is offered for it.
         _db_host="${MARIADB_JAIL_IP}"
         _db_port="${MARIADB_PORT}"
         _db_name=$(prompt "Database name" "${AZURACAST_DB_NAME_DEFAULT}")

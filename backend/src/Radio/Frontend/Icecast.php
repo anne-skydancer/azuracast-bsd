@@ -5,18 +5,24 @@ declare(strict_types=1);
 namespace App\Radio\Frontend;
 
 use App\Entity\Api\LogType;
+use App\Entity\Repository\StationMountRepository;
 use App\Entity\Station;
 use App\Entity\StationMount;
 use App\Http\Router;
 use App\Radio\Enums\StreamFormats;
+use App\Radio\RemoteSupervisorClientFactory;
 use App\Service\Acme;
 use App\Utilities\Arrays;
 use App\Xml\Writer;
+use GuzzleHttp\Client;
 use GuzzleHttp\Promise\Utils;
 use GuzzleHttp\Psr7\Uri;
+use NowPlaying\AdapterFactory;
 use NowPlaying\Result\Result;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Http\Message\UriInterface;
 use Supervisor\Exception\SupervisorException as SupervisorLibException;
+use Supervisor\SupervisorInterface;
 use Symfony\Component\Filesystem\Path;
 
 class Icecast extends AbstractFrontend
@@ -30,13 +36,47 @@ class Icecast extends AbstractFrontend
     public const string WEBROOT = self::BASE_DIR . '/web';
     public const string ADMINROOT = self::BASE_DIR . '/admin';
 
+    /** Default supervisord `inet_http_server` TCP port for remote stations. */
+    public const int DEFAULT_SUPERVISOR_PORT = 9002;
+
+    public function __construct(
+        protected RemoteSupervisorClientFactory $remoteSupervisorFactory,
+        AdapterFactory $adapterFactory,
+        StationMountRepository $stationMountRepo,
+        SupervisorInterface $supervisor,
+        EventDispatcherInterface $dispatcher,
+        Router $router,
+        Client $httpClient,
+    ) {
+        parent::__construct($adapterFactory, $stationMountRepo, $supervisor, $dispatcher, $router, $httpClient);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getSupervisor(Station $station): SupervisorInterface
+    {
+        $feConfig = $station->frontend_config;
+
+        if (null === $feConfig->host) {
+            return parent::getSupervisor($station);
+        }
+
+        return $this->remoteSupervisorFactory->getClient(
+            $feConfig->host,
+            $feConfig->supervisor_port ?? self::DEFAULT_SUPERVISOR_PORT,
+            $feConfig->supervisor_username,
+            $feConfig->supervisor_password
+        );
+    }
+
     public function reload(Station $station): void
     {
         if ($this->hasCommand($station)) {
             $programName = $this->getSupervisorFullName($station);
 
             try {
-                $this->supervisor->signalProcess($programName, 'HUP');
+                $this->getSupervisor($station)->signalProcess($programName, 'HUP');
                 $this->logger->info(
                     'Adapter "' . self::class . '" reloaded.',
                     ['station_id' => $station->id, 'station_name' => $station->name]
@@ -52,8 +92,17 @@ class Icecast extends AbstractFrontend
         $feConfig = $station->frontend_config;
         $radioPort = $feConfig->port;
 
-        $baseUrl = $this->environment->getLocalUri()
-            ->withPort($radioPort);
+        if (null !== $feConfig->host) {
+            // Remote station: poll the Icecast admin stats API on its own jail/host.
+            $baseUrl = (new Uri())
+                ->withScheme('http')
+                ->withHost($feConfig->host)
+                ->withPort($radioPort);
+        } else {
+            // Local/co-located station (default, unchanged behavior).
+            $baseUrl = $this->environment->getLocalUri()
+                ->withPort($radioPort);
+        }
 
         $npAdapter = $this->adapterFactory->getIcecastAdapter($baseUrl);
 
@@ -280,11 +329,25 @@ class Icecast extends AbstractFrontend
 
             $mountRelayUri = $mountRow->getRelayUrlAsUri();
             if (null !== $mountRelayUri) {
+                // Relay URLs may embed credentials for an authenticated upstream source via
+                // standard URI userinfo syntax (e.g. icecast://source:hackme@host:port/mount) --
+                // getRelayUrlAsUri() already parses this out via PSR-7's UriInterface, it just
+                // wasn't being read here. Icecast's <relay> block accepts optional <username>/
+                // <password> children for exactly this case; without them, relaying from a
+                // password-protected upstream source silently fails (Icecast connects
+                // unauthenticated and gets rejected).
+                $relayUserInfo = $mountRelayUri->getUserInfo();
+                [$relayUsername, $relayPassword] = ('' !== $relayUserInfo)
+                    ? array_pad(explode(':', $relayUserInfo, 2), 2, null)
+                    : [null, null];
+
                 $config['relay'][] = array_filter([
                     'server' => $mountRelayUri->getHost(),
                     'port' => $mountRelayUri->getPort(),
                     'mount' => $mountRelayUri->getPath(),
                     'local-mount' => $mountRow->name,
+                    'username' => $relayUsername,
+                    'password' => $relayPassword,
                 ]);
             }
 
@@ -332,6 +395,22 @@ class Icecast extends AbstractFrontend
 
     public function getCommand(Station $station): ?string
     {
+        // `getBinary()` (inherited, no-arg) can only check for the binary's presence on the
+        // *local* filesystem, i.e. the PHP/webapp jail. For a remote station, Icecast runs in
+        // a different jail entirely, so a local `file_exists()` check would always fail and
+        // incorrectly make `hasCommand()`/`isRunning()`/`start()`/`stop()` no-ops for it. Since
+        // `getBinary()` has no Station context (it's also called station-agnostically from
+        // `isInstalled()`), the remote case is special-cased here instead: we trust that the
+        // remote jail has Icecast installed at the standard path and always return a command,
+        // without gating on any local file check.
+        if (null !== $station->frontend_config->host) {
+            return sprintf(
+                '%s -c %s',
+                escapeshellcmd('/usr/local/bin/icecast'),
+                escapeshellarg($this->getConfigurationPath($station))
+            );
+        }
+
         $binary = $this->getBinary();
         if ($binary === null) {
             return null;

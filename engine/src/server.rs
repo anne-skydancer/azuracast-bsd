@@ -4,9 +4,10 @@
 //! `control_api.api_key` from the config, except `/health` which is
 //! unauthenticated (basic liveness probing).
 //!
-//! This phase has no real audio/queue/metadata engine behind it: handlers
-//! just log what they were asked to do and return a canned success
-//! response. Phases 3-5 wire these into the real playback engine.
+//! Phase 3 wired the two queue routes into the real playback engine.
+//! `/skip` and `/metadata` are now wired too (this phase) via the shared
+//! `ControlSignals` handle in `control.rs`; `/streamer/disconnect` remains a
+//! log-and-return stub pending Phase 4's live-DJ harbor.
 
 use axum::{
     extract::{Path, Request, State},
@@ -19,10 +20,21 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
+use std::sync::Arc;
+
+use crate::control::ControlSignals;
+use crate::queue::TrackQueues;
 
 #[derive(Clone)]
 pub struct AppState {
     pub control_api_key: String,
+    /// Phase 3: the real priority queues (`requests`/`interrupting_requests`)
+    /// that `queue_push_handler`/`queue_empty_handler` now actually mutate,
+    /// and that the playback pipeline (`pipeline.rs`) pops from.
+    pub queues: Arc<TrackQueues>,
+    /// `/skip` + `/metadata` signal handle shared with `pipeline.rs`'s loop
+    /// -- see `control.rs`'s module doc.
+    pub control: Arc<ControlSignals>,
 }
 
 /// Builds the full router: `/health` is unauthenticated, everything else
@@ -71,8 +83,17 @@ async fn health_handler() -> impl IntoResponse {
     (StatusCode::OK, Json(json!({"status": "ok"})))
 }
 
-async fn skip_handler() -> impl IntoResponse {
+/// SPEC.md C.9's `add_skip_command` (`source.skip(s)`): signals
+/// `pipeline.rs`'s loop to abandon the rest of the currently-playing
+/// track's body and jump straight to the crossfade into the next track, as
+/// if the body had naturally ended here. Fire-and-forget -- dispatches the
+/// signal and returns immediately without waiting for the pipeline to act
+/// on it (matching the rest of this control API's async, non-blocking
+/// handlers). See `control.rs` and `pipeline.rs` for why this takes effect
+/// on the pipeline's next loop check rather than instantaneously.
+async fn skip_handler(State(state): State<AppState>) -> impl IntoResponse {
     tracing::info!("skip requested");
+    state.control.request_skip();
     (StatusCode::OK, Json(json!({"ok": true})))
 }
 
@@ -82,20 +103,43 @@ struct PushBody {
 }
 
 async fn queue_push_handler(
+    State(state): State<AppState>,
     Path(queue): Path<String>,
     Json(body): Json<PushBody>,
 ) -> impl IntoResponse {
-    tracing::info!("enqueue to {queue}: {}", body.uri);
-    (StatusCode::OK, Json(json!({"ok": true})))
+    match state.queues.push(&queue, body.uri.clone()) {
+        Ok(()) => {
+            tracing::info!("enqueued to {queue}: {}", body.uri);
+            (StatusCode::OK, Json(json!({"ok": true}))).into_response()
+        }
+        Err(e) => {
+            tracing::warn!("rejected enqueue to {queue}: {e}");
+            (StatusCode::BAD_REQUEST, Json(json!({"ok": false, "error": e}))).into_response()
+        }
+    }
 }
 
-async fn queue_empty_handler(Path(queue): Path<String>) -> impl IntoResponse {
-    tracing::info!("queue empty check for {queue}: no real queue in this phase, reporting empty");
-    (StatusCode::OK, Json(json!({"empty": true})))
+async fn queue_empty_handler(
+    State(state): State<AppState>,
+    Path(queue): Path<String>,
+) -> impl IntoResponse {
+    let empty = state.queues.is_empty(&queue);
+    tracing::info!("queue empty check for {queue}: {empty}");
+    (StatusCode::OK, Json(json!({"empty": empty})))
 }
 
-async fn metadata_handler(Json(meta): Json<HashMap<String, String>>) -> impl IntoResponse {
+/// SPEC.md C.9's `add_custom_metadata_command` (`insert_metadata`):
+/// stages `meta` as an override to be merged onto the currently-playing
+/// track's metadata and re-pushed through `FeedbackDedup::maybe_send` on
+/// `pipeline.rs`'s next loop iteration (see `control.rs` and `pipeline.rs`
+/// for the exact mechanism and the same "next check, not instantaneous"
+/// caveat as `/skip`). Fire-and-forget, same as every other handler here.
+async fn metadata_handler(
+    State(state): State<AppState>,
+    Json(meta): Json<HashMap<String, String>>,
+) -> impl IntoResponse {
     tracing::info!("received metadata: {meta:?}");
+    state.control.set_metadata_override(meta);
     (StatusCode::OK, Json(json!({"ok": true})))
 }
 

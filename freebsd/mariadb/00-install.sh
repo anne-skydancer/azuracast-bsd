@@ -46,11 +46,14 @@ pkg install -y mariadb118-server
 sysrc mysql_enable=YES
 
 # --- Render templates from freebsd/env.conf ---------------------------------
-# my.cnf.tmpl (bind-address templated from MARIADB_JAIL_IP) is rendered
+# my.cnf.tmpl (bind-address templated from MARIADB_JAIL_IP and
+# MARIADB_JAIL_IP6, both sourced from env.conf above) is rendered
 # directly to the location the mariadb118-server package reads config
-# fragments from.
+# fragments from. Listing both makes MariaDB dual-stack bound so webapp
+# can reach it over either address family.
 mkdir -p /usr/local/etc/mysql/conf.d
 sed -e "s|@@MARIADB_JAIL_IP@@|${MARIADB_JAIL_IP}|g" \
+    -e "s|@@MARIADB_JAIL_IP6@@|${MARIADB_JAIL_IP6}|g" \
     "${SCRIPT_DIR}/my.cnf.tmpl" >/usr/local/etc/mysql/conf.d/azuracast.cnf
 
 # Network-level access control (pf or otherwise) is out of scope for this

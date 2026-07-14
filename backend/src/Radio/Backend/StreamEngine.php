@@ -7,24 +7,40 @@ namespace App\Radio\Backend;
 use App\Entity\Api\LogType;
 use App\Entity\Station;
 use App\Entity\StationStreamer;
+use App\Http\Router;
 use App\Nginx\CustomUrls;
 use App\Radio\AbstractLocalAdapter;
 use App\Radio\Configuration;
 use App\Radio\Enums\AudioQueues;
+use App\Radio\FallbackFile;
+use GuzzleHttp\Client;
 use LogicException;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Http\Message\UriInterface;
+use Supervisor\SupervisorInterface;
 use Symfony\Component\Process\Process;
 
 /**
  * Adapter for the new Rust-based AzuraCast Engine, which replaces Liquidsoap's telnet API
  * with a small HTTP control API and a structured TOML configuration file.
  *
- * As of this phase, the engine is a lifecycle/control-API/callback skeleton only (silence,
- * no real AutoDJ decode yet); this class is PHP-side wiring for that skeleton.
+ * Config generation covers real AutoDJ decode/crossfade/replaygain (Phase 3) and live DJ
+ * harbor input (Phase 4, `[harbor]` section below) as of this phase. Icecast/Shoutcast
+ * network output and HLS are still a later-phase concern; see engine/SPEC.md.
  */
 final class StreamEngine extends AbstractLocalAdapter implements BackendInterface
 {
     private const string AUTH_HEADER = 'X-Engine-Api-Key';
+
+    public function __construct(
+        private readonly FallbackFile $fallbackFile,
+        SupervisorInterface $supervisor,
+        EventDispatcherInterface $dispatcher,
+        Router $router,
+        Client $httpClient,
+    ) {
+        parent::__construct($supervisor, $dispatcher, $router, $httpClient);
+    }
 
     /**
      * @inheritDoc
@@ -35,9 +51,10 @@ final class StreamEngine extends AbstractLocalAdapter implements BackendInterfac
     }
 
     /**
-     * Build the minimal TOML configuration needed for the engine to start, expose its control
-     * API, and make callbacks to PHP. Richer configuration (crossfade, encoding, HLS, etc.)
-     * is a later-phase concern; see engine/SPEC.md.
+     * Build the TOML configuration needed for the engine to start, expose its control API, make
+     * callbacks to PHP, and (as of Phase 3) apply the station's replaygain and crossfade
+     * settings. Richer configuration (encoding, HLS, etc.) is a later-phase concern; see
+     * engine/SPEC.md.
      *
      * @inheritDoc
      */
@@ -47,10 +64,56 @@ final class StreamEngine extends AbstractLocalAdapter implements BackendInterfac
         $callbackBaseUrl = (string)$this->environment->getInternalUri();
         $logPath = $station->getRadioConfigDir() . '/engine.log';
 
+        $backendConfig = $station->backend_config;
+
+        // `enable_replaygain_metadata`'s getter already forces `false` when `enable_auto_cue`
+        // is true (see StationBackendConfiguration), so this already reflects the effective
+        // value -- no need to re-derive the override here.
+        $replaygainEnabled = $backendConfig->enable_replaygain_metadata;
+
+        $fallbackPath = $this->fallbackFile->getFallbackPathForStation($station);
+
+        // `getCrossfadeTypeEnum()` already encodes the `enable_auto_cue` override (forces
+        // `Disabled` aka `"none"`); its enum value ("normal"/"smart"/"none") maps directly onto
+        // what the Rust engine's `CrossfadeConfig::mode()` expects, since it treats both
+        // "disabled" and "none" as CrossfadeMode::Disabled.
+        $crossfadeMode = $backendConfig->getCrossfadeTypeEnum()->value;
+
+        // Deliberately the raw `crossfade` field (SPEC.md's `default_fade`), NOT
+        // `getCrossfadeDuration()`'s 1.5x-scaled value (SPEC.md's `default_cross`) -- the
+        // engine's `fade_seconds` corresponds to `default_fade` (see engine/src/crossfade.rs).
+        $fadeSeconds = $backendConfig->crossfade;
+
+        // Phase 4: live DJ harbor input. Mirrors Liquidsoap's `input.harbor(...)` config (SPEC.md
+        // B.4) -- `enabled` gates the whole harbor listener off entirely when the station has no
+        // streamers (matching `writeHarborConfiguration`'s no-op-if-disabled behavior), rather
+        // than starting a listener nobody can use. `buffer_secs`/`max_buffer_secs` are only
+        // emitted when `dj_buffer != 0`, matching Liquidsoap's own conditional emission of
+        // `buffer=`/`max=` (omitted entirely otherwise, letting the engine fall back to its own
+        // default).
+        $harborEnabled = $station->enable_streamers;
+        $djBuffer = $backendConfig->dj_buffer;
+
+        $harborLines = [
+            '',
+            '[harbor]',
+            'enabled = ' . self::tomlBool($harborEnabled),
+            'bind_address = "0.0.0.0"',
+            'port = ' . $this->getStreamPort($station),
+            'mount_point = ' . self::tomlString($backendConfig->dj_mount_point),
+            'charset = ' . self::tomlString($backendConfig->charset),
+        ];
+
+        if (0 !== $djBuffer) {
+            $harborLines[] = 'buffer_secs = ' . self::tomlFloat((float)$djBuffer);
+            $harborLines[] = 'max_buffer_secs = ' . self::tomlFloat(max($djBuffer + 5, 10));
+        }
+
         $lines = [
             '[station]',
             'id = ' . $station->id,
             'name = ' . self::tomlString($station->name),
+            'replaygain_enabled = ' . self::tomlBool($replaygainEnabled),
             '',
             '[control_api]',
             'bind_address = "127.0.0.1"',
@@ -64,6 +127,15 @@ final class StreamEngine extends AbstractLocalAdapter implements BackendInterfac
             '',
             '[paths]',
             'log_file = ' . self::tomlString($logPath),
+            'fallback_file_path = ' . self::tomlString($fallbackPath),
+            '',
+            '[crossfade]',
+            'mode = ' . self::tomlString($crossfadeMode),
+            'fade_seconds = ' . self::tomlFloat($fadeSeconds),
+            'high = ' . self::tomlFloat($backendConfig->crossfade_smart_high),
+            'medium = ' . self::tomlFloat($backendConfig->crossfade_smart_medium),
+            'margin = ' . self::tomlFloat($backendConfig->crossfade_smart_margin),
+            ...$harborLines,
         ];
 
         return implode("\n", $lines) . "\n";
@@ -73,6 +145,20 @@ final class StreamEngine extends AbstractLocalAdapter implements BackendInterfac
     {
         $escaped = str_replace(['\\', '"'], ['\\\\', '\\"'], $value);
         return '"' . $escaped . '"';
+    }
+
+    private static function tomlBool(bool $value): string
+    {
+        return $value ? 'true' : 'false';
+    }
+
+    /**
+     * Format a number as a TOML float literal (always includes a decimal point, so e.g. `2.0`
+     * is never emitted as the TOML integer `2` -- the engine's config fields are typed `f64`).
+     */
+    private static function tomlFloat(float $value): string
+    {
+        return number_format($value, 2, '.', '');
     }
 
     /**

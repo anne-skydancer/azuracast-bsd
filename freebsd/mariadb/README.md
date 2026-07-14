@@ -23,7 +23,26 @@ different layout, then re-run `freebsd/generate-jail-conf.sh` (see
 |---|---|
 | `00-install.sh` | Installs `mariadb118-server` via `pkg`, enables it at boot, and renders `my.cnf.tmpl` from `freebsd/env.conf`. |
 | `my.cnf.tmpl` | Config fragment template — rendered by `00-install.sh` directly to `/usr/local/etc/mysql/conf.d/azuracast.cnf`. |
-| `10-provision-db.sh` | First-run only: initializes the data dir, starts MariaDB, creates the `azuracast` database/user with a network-scoped grant. |
+| `10-provision-db.sh` | First-run only: initializes the data dir, starts MariaDB, creates the `azuracast` database/user (IPv4 + IPv6 grants) with network-scoped grants. |
+
+## Dual-stack (IPv4 + IPv6)
+
+This jail is dual-stack (`MARIADB_JAIL_IP` / `MARIADB_JAIL_IP6` in
+`freebsd/env.conf`), and both application-layer pieces here now actually
+use both addresses, not just the network layer:
+
+- `my.cnf.tmpl`'s `bind-address` is a comma-separated list —
+  `@@MARIADB_JAIL_IP@@,@@MARIADB_JAIL_IP6@@` — which MariaDB has
+  supported since 10.4.6 (well below the 11.8 branch this jail installs).
+  `00-install.sh`'s `sed` invocation substitutes both tokens from
+  `env.conf`. This means `webapp` can reach MariaDB over either its IPv4
+  or IPv6 address.
+- Because a bind address alone doesn't grant access, `10-provision-db.sh`
+  now creates **two** users for the same logical account —
+  `'azuracast'@'WEBAPP_JAIL_IP'` and `'azuracast'@'WEBAPP_JAIL_IP6'` —
+  both sharing the same `AZURACAST_DB_PASSWORD`, so a webapp connection
+  authenticates correctly regardless of which address family it connects
+  over.
 
 ## Setup order
 
@@ -59,12 +78,17 @@ different layout, then re-run `freebsd/generate-jail-conf.sh` (see
 4. `sh freebsd/mariadb/10-provision-db.sh`
    Initializes `/var/db/mysql` if needed, starts `mysql-server`, and creates:
    - database `azuracast` (utf8mb4 / utf8mb4_general_ci)
-   - user `'azuracast'@'WEBAPP_JAIL_IP'` (scoped to the value of
-     `WEBAPP_JAIL_IP` in `freebsd/env.conf`, currently `10.8.0.110` — i.e.
-     the webapp jail's IP only — deliberately **not** `'azuracast'@'%'`
-     and **not** `'azuracast'@'localhost'`, since the app connects over
-     the network from a different jail)
-   - a grant of all privileges on `azuracast`.* to that user
+   - user `'azuracast'@'WEBAPP_JAIL_IP'` **and**
+     `'azuracast'@'WEBAPP_JAIL_IP6'` (scoped to the webapp jail's IPv4
+     address, currently `10.8.0.110`, and its IPv6 address, currently
+     `2001:8a0:6a32:2100::110` — both values from `freebsd/env.conf` —
+     i.e. the webapp jail's addresses only — deliberately **not**
+     `'azuracast'@'%'` and **not** `'azuracast'@'localhost'`, since the
+     app connects over the network from a different jail). Both users
+     share the same password (`AZURACAST_DB_PASSWORD`) — this is one
+     logical account reachable from either address family, not two
+     separate accounts.
+   - a grant of all privileges on `azuracast`.* to each of those users
 
    Note the MariaDB user grant above is scoped to the `webapp` jail's IP,
    but that's an authentication-layer restriction, not a network-layer

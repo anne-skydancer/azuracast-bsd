@@ -35,10 +35,10 @@ not install or manage it.
 | `supervisord.conf` | Base (non-station) supervisord config — install to `/usr/local/etc/supervisord.conf`. |
 | `crontab` | Per-user crontab (for the `azuracast` user) replacing supercronic. |
 | `rc.d/azuracast` | rc.d script — waits for MariaDB, runs one-time setup/migrations, then starts supervisord. Install to `/usr/local/etc/rc.d/azuracast`. |
-| `nginx.conf` | Adapted nginx config — install to `/usr/local/etc/nginx/nginx.conf`. |
+| `nginx.conf` | Adapted nginx config (dual-stack `listen` directives) — install to `/usr/local/etc/nginx/nginx.conf`. |
 | `centrifugo-config.toml` | Adapted Centrifugo config — install to `/var/azuracast/centrifugo/config.toml`. |
 | `sftpgo.json` | Adapted SFTPGo config — install to `/var/azuracast/sftpgo/sftpgo.json`. |
-| `valkey.conf` | Valkey config, scoped to loopback + unix socket — install to `/usr/local/etc/valkey.conf` (or wherever the package's `valkey_config` rcvar points). |
+| `valkey.conf` | Valkey config, scoped to IPv4 + IPv6 loopback + unix socket — install to `/usr/local/etc/valkey.conf` (or wherever the package's `valkey_config` rcvar points). |
 | `configure-db.sh` | Interactive first-install script: asks whether you have an existing DB server or want the default `mariadb` jail, then writes `MYSQL_*` into `azuracast.env`. |
 
 ## Setup order
@@ -139,10 +139,14 @@ cp freebsd/webapp/valkey.conf /usr/local/etc/valkey.conf
 
 (confirm `/usr/local/etc/valkey.conf` against the installed package's
 default `valkey_config` rcvar — adjust the path if it differs). Note
-`valkey.conf` here deliberately binds to `127.0.0.1` + a unix socket
-rather than `0.0.0.0` as the Docker source does — nothing outside this
-jail needs to reach Valkey, so it's scoped down the same way the
-`mariadb` jail's `bind-address` is.
+`valkey.conf` here deliberately binds to `127.0.0.1` + `::1` (IPv4 and
+IPv6 loopback) + a unix socket rather than `0.0.0.0` as the Docker
+source does — nothing outside this jail needs to reach Valkey, so it's
+scoped down the same way the `mariadb` jail's `bind-address` is. The
+`::1` addition is for dual-stack completeness only; Valkey is
+deliberately **not** bound to `WEBAPP_JAIL_IP6` (this jail's routable
+IPv6 address) — doing so would defeat the loopback-only posture this
+was scoped down to in the first place.
 
 Then:
 ```sh
@@ -179,6 +183,44 @@ These are the same env var names AzuraCast's `backend/src/Environment.php`
 already reads — no application code changes are required, only values.
 Where exactly the AzuraCast application itself gets deployed to (so
 `azuracast.env` has somewhere to live) is out of scope for this change.
+
+## Dual-stack (IPv4 + IPv6)
+
+This jail is dual-stack (`WEBAPP_JAIL_IP` / `WEBAPP_JAIL_IP6` in
+`freebsd/env.conf`). What was audited and changed at the application
+layer:
+
+- **nginx** (`nginx.conf`): every `listen` directive now has a matching
+  IPv6 counterpart — `listen 80;` / `listen [::]:80;`, `listen 443
+  default_server http2 ssl;` / `listen [::]:443 default_server http2
+  ssl;`, and the internal `127.0.0.1:6010` handler also listens on
+  `[::1]:6010`. Previously nginx was IPv4-only despite the jail having a
+  routable IPv6 address.
+- **Valkey** (`valkey.conf`): now binds `127.0.0.1 ::1` (was
+  `127.0.0.1` only) — loopback-only by design either way (see the
+  Valkey section above); the IPv6 loopback addition is for
+  completeness, not for exposing Valkey beyond this jail.
+- **Centrifugo** (`centrifugo-config.toml`): no change needed.
+  `[http_server]` sets only `port`/`internal_port`, no explicit
+  `address`, and Centrifugo's documented behavior for an unset address
+  is to listen on the wildcard for both address families — confirmed by
+  reading Centrifugo's own docs rather than assumed.
+- **SFTPGo** (`sftpgo.json`): no change needed. `sftpd.bindings[0].address`
+  is `""`, which is SFTPGo's documented value for "listen on all
+  interfaces" — dual-stack already, per SFTPGo's own binding docs.
+  Documented in a `_comment_bindings` key added next to the binding.
+- **MariaDB reachability from this jail**: see
+  `freebsd/mariadb/README.md`'s new dual-stack section — MariaDB now
+  binds both `MARIADB_JAIL_IP` and `MARIADB_JAIL_IP6`, with matching
+  IPv4/IPv6-scoped grants for `'azuracast'@'WEBAPP_JAIL_IP'` /
+  `'azuracast'@'WEBAPP_JAIL_IP6'`.
+- **`configure-db.sh`**: the "no existing server" branch still defaults
+  `_db_host` to `MARIADB_JAIL_IP` (IPv4) — left as-is deliberately, since
+  IPv4 has no practical disadvantage over IPv6 on this internal
+  single-host jail network, and adding an interactive IPv6 option would
+  be UI complexity with no real benefit. A comment in the script notes
+  `MARIADB_JAIL_IP6` is available and can be substituted by hand if you
+  prefer it.
 
 ## Notes / things worth double-checking on the actual box
 

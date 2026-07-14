@@ -11,6 +11,7 @@ use App\Entity\Repository\StationPlaylistMediaRepository;
 use App\Entity\Station;
 use App\Entity\StationPlaylist;
 use App\Exception;
+use App\Radio\Backend\BackendInterface;
 use App\Radio\Enums\BackendAdapters;
 use App\Radio\Enums\FrontendAdapters;
 use RuntimeException;
@@ -25,7 +26,16 @@ final class Configuration
     public const int DEFAULT_PORT_MIN = 8000;
     public const int DEFAULT_PORT_MAX = 8499;
 
-    public const string PER_STATION_SUPERVISOR_CONF = 'supervisord.conf';
+    /** Per-adapter supervisord config file names, one per station config dir. */
+    public const string SUPERVISOR_CONF_BACKEND = 'supervisord.backend.conf';
+    public const string SUPERVISOR_CONF_FRONTEND = 'supervisord.frontend.conf';
+
+    /**
+     * The pre-split (backend + frontend combined into one group/file) config file name. No
+     * longer written, but a station's config dir may still have one left over from before an
+     * upgrade; writeConfiguration()/removeConfiguration() best-effort clean it up.
+     */
+    public const string LEGACY_SUPERVISOR_CONF = 'supervisord.conf';
 
     public const array PROTECTED_PORTS = [
         3306, // MariaDB
@@ -39,7 +49,6 @@ final class Configuration
 
     public function __construct(
         private readonly Adapters $adapters,
-        private readonly SupervisorInterface $supervisor,
         private readonly StationPlaylistMediaRepository $spmRepo,
     ) {
     }
@@ -82,6 +91,15 @@ final class Configuration
 
     /**
      * Write all configuration changes to the filesystem and reload supervisord.
+     *
+     * Each adapter (backend/frontend) gets its own independent supervisord group and config
+     * file -- see getSupervisorConfPath() and buildAdapterSupervisorConfig(). This is required
+     * because backend and frontend may run under different (local vs. remote) supervisord
+     * instances; a single group spanning two supervisord instances isn't a real concept, and
+     * writing one combined file into both jails would make each try to launch a program it has
+     * no binary for. For the common co-located case (both local, the default), the net
+     * externally observable behavior is unchanged: both groups just happen to live on the same
+     * supervisord instance.
      */
     public function writeConfiguration(
         Station $station,
@@ -94,10 +112,6 @@ final class Configuration
         }
 
         $this->initializeConfiguration($station);
-
-        // Initialize adapters.
-        $supervisorConfig = [];
-        $supervisorConfigFile = self::getSupervisorConfPath($station);
 
         $frontendEnum = $station->frontend_type;
         $backendEnum = $station->backend_type;
@@ -124,62 +138,23 @@ final class Configuration
             throw new RuntimeException('Station is disabled.');
         }
 
-        // Write group section of config
-        $programNames = [];
-        $programs = [];
+        // Build and write each adapter's own supervisord config (or remove any stale file for
+        // it, if it no longer has a command to run).
+        $backendConfigContent = $this->buildAdapterSupervisorConfig($station, $backend);
+        $frontendConfigContent = $this->buildAdapterSupervisorConfig($station, $frontend);
 
-        if (null !== $backend && $backend->hasCommand($station)) {
-            $programName = $backend->getSupervisorProgramName($station);
+        self::writeOrRemoveAdapterConfigFile(
+            self::getSupervisorConfPath($station, 'backend'),
+            $backendConfigContent
+        );
+        self::writeOrRemoveAdapterConfigFile(
+            self::getSupervisorConfPath($station, 'frontend'),
+            $frontendConfigContent
+        );
 
-            $programs[$programName] = $backend;
-            $programNames[] = $programName;
-        }
-
-        if (null !== $frontend && $frontend->hasCommand($station)) {
-            $programName = $frontend->getSupervisorProgramName($station);
-
-            $programs[$programName] = $frontend;
-            $programNames[] = $programName;
-        }
-
-        $stationGroup = self::getSupervisorGroupName($station);
-
-        $supervisorConfig[] = '[group:' . $stationGroup . ']';
-        $supervisorConfig[] = 'programs=' . implode(',', $programNames);
-        $supervisorConfig[] = '';
-
-        foreach ($programs as $programName => $adapter) {
-            $configLines = [
-                'user' => 'azuracast',
-                'priority' => 950,
-                'startsecs' => 10,
-                'startretries' => 5,
-                'command' => $adapter->getCommand($station),
-                'directory' => $station->getRadioConfigDir(),
-                'environment' => self::buildEnvironment([
-                    'TZ' => $station->timezone,
-                    ...$adapter->getEnvironmentVariables($station),
-                ]),
-                'autostart' => 'false',
-                'autorestart' => 'true',
-                'stdout_logfile' => $adapter->getLogPath($station),
-                'stdout_logfile_maxbytes' => '5MB',
-                'stdout_logfile_backups' => '5',
-                'redirect_stderr' => 'true',
-                'stdout_events_enabled' => 'true',
-                'stderr_events_enabled' => 'true',
-            ];
-
-            $supervisorConfig[] = '[program:' . $programName . ']';
-            foreach ($configLines as $configKey => $configValue) {
-                $supervisorConfig[] = $configKey . '=' . $configValue;
-            }
-            $supervisorConfig[] = '';
-        }
-
-        // Write config contents
-        $supervisorConfigData = implode("\n", $supervisorConfig);
-        file_put_contents($supervisorConfigFile, $supervisorConfigData);
+        // Best-effort cleanup of a pre-split combined config file left over from before an
+        // upgrade.
+        @unlink(self::getLegacySupervisorConfPath($station));
 
         // Write supporting configurations.
         $frontend?->write($station);
@@ -187,23 +162,124 @@ final class Configuration
 
         $this->markAsStarted($station);
 
-        // Reload Supervisord and process groups
+        // Reload Supervisord and process groups, once per adapter that has a command, each
+        // through that adapter's own resolved (possibly remote) Supervisor client. For the
+        // common co-located case, both resolve to the same local instance, so this issues two
+        // reloads against the same supervisord -- that's fine and correct, not a bug to
+        // optimize away.
         if ($reloadSupervisor) {
-            $affectedGroups = $this->reloadSupervisor();
-            $wasRestarted = in_array($stationGroup, $affectedGroups, true);
+            // Matches the pre-split "attempt a soft reload" gate exactly: if reload is allowed
+            // at all and either side is reload-capable, prefer reload() (which itself
+            // gracefully falls back to a hard restart on adapters that don't override it) over
+            // an unconditional stop/start of the whole group.
+            $softReloadEligible = $attemptReload
+                && ($backendEnum->isEnabled() || $frontendEnum->supportsReload());
 
-            if (!$wasRestarted && $forceRestart) {
-                try {
-                    if ($attemptReload && ($backendEnum->isEnabled() || $frontendEnum->supportsReload())) {
-                        $backend?->reload($station);
-                        $frontend?->reload($station);
-                    } else {
-                        $this->supervisor->stopProcessGroup($stationGroup);
-                        $this->supervisor->startProcessGroup($stationGroup);
-                    }
-                } catch (SupervisorException) {
-                }
+            if (null !== $backend && null !== $backendConfigContent) {
+                $this->reloadAdapterGroup($station, $backend, $forceRestart, $softReloadEligible);
             }
+
+            if (null !== $frontend && null !== $frontendConfigContent) {
+                $this->reloadAdapterGroup($station, $frontend, $forceRestart, $softReloadEligible);
+            }
+        }
+    }
+
+    /**
+     * Build the supervisord config content (one `[group:]` + one `[program:]` block) for a
+     * single adapter.
+     *
+     * @return string|null The config file content, or null if the adapter has no command to
+     *                      run (the caller should remove any stale file for it in that case).
+     */
+    private function buildAdapterSupervisorConfig(
+        Station $station,
+        BackendInterface|Frontend\AbstractFrontend|null $adapter
+    ): ?string {
+        if (null === $adapter || !$adapter->hasCommand($station)) {
+            return null;
+        }
+
+        // The group is named identically to its one program -- see
+        // AbstractLocalAdapter::getSupervisorFullName(), which relies on this exact naming to
+        // resolve "group:program" specifiers for start/stop/isRunning.
+        $programName = $adapter->getSupervisorProgramName($station);
+
+        $configLines = [
+            'user' => 'azuracast',
+            'priority' => 950,
+            'startsecs' => 10,
+            'startretries' => 5,
+            'command' => $adapter->getCommand($station),
+            'directory' => $station->getRadioConfigDir(),
+            'environment' => self::buildEnvironment([
+                'TZ' => $station->timezone,
+                ...$adapter->getEnvironmentVariables($station),
+            ]),
+            'autostart' => 'false',
+            'autorestart' => 'true',
+            'stdout_logfile' => $adapter->getLogPath($station),
+            'stdout_logfile_maxbytes' => '5MB',
+            'stdout_logfile_backups' => '5',
+            'redirect_stderr' => 'true',
+            'stdout_events_enabled' => 'true',
+            'stderr_events_enabled' => 'true',
+        ];
+
+        $supervisorConfig = [
+            '[group:' . $programName . ']',
+            'programs=' . $programName,
+            '',
+            '[program:' . $programName . ']',
+        ];
+
+        foreach ($configLines as $configKey => $configValue) {
+            $supervisorConfig[] = $configKey . '=' . $configValue;
+        }
+        $supervisorConfig[] = '';
+
+        return implode("\n", $supervisorConfig);
+    }
+
+    private static function writeOrRemoveAdapterConfigFile(string $configFile, ?string $content): void
+    {
+        if (null === $content) {
+            @unlink($configFile);
+            return;
+        }
+
+        file_put_contents($configFile, $content);
+    }
+
+    /**
+     * Reload supervisord for the given adapter's own group, using its own resolved (possibly
+     * remote) Supervisor client, and force-restart it if requested and the reload sweep didn't
+     * already pick up the change on its own.
+     */
+    private function reloadAdapterGroup(
+        Station $station,
+        BackendInterface|Frontend\AbstractFrontend $adapter,
+        bool $forceRestart,
+        bool $softReloadEligible
+    ): void {
+        $groupName = $adapter->getSupervisorProgramName($station);
+        $supervisor = $adapter->resolveSupervisor($station);
+
+        $affectedGroups = $this->reloadSupervisor($supervisor);
+        $wasRestarted = in_array($groupName, $affectedGroups, true);
+
+        if ($wasRestarted || !$forceRestart) {
+            return;
+        }
+
+        try {
+            if ($softReloadEligible) {
+                $adapter->reload($station);
+            } else {
+                $supervisor->stopProcessGroup($groupName);
+                $supervisor->startProcessGroup($groupName);
+            }
+        } catch (SupervisorException) {
         }
     }
 
@@ -235,11 +311,14 @@ final class Configuration
     }
 
     /**
-     * Trigger a supervisord reload and restart all relevant services.
+     * Trigger a supervisord reload (on the given Supervisor client) and restart all relevant
+     * services.
+     *
+     * @return string[] The names of the groups supervisord's own reload sweep added/changed.
      */
-    private function reloadSupervisor(): array
+    private function reloadSupervisor(SupervisorInterface $supervisor): array
     {
-        return $this->supervisor->reloadAndApplyConfig()->getAffected();
+        return $supervisor->reloadAndApplyConfig()->getAffected();
     }
 
     /**
@@ -381,6 +460,9 @@ final class Configuration
     /**
      * Remove configuration (i.e. prior to station removal) and trigger a Supervisor refresh.
      *
+     * Mirrors the split from writeConfiguration(): each adapter's group/file is stopped,
+     * removed, and reloaded independently via its own resolved Supervisor client.
+     *
      * @param Station $station
      */
     public function removeConfiguration(
@@ -391,22 +473,46 @@ final class Configuration
             return;
         }
 
-        $stationGroup = 'station_' . $station->id;
+        $frontend = $this->adapters->getFrontendAdapter($station);
+        $backend = $this->adapters->getBackendAdapter($station);
+
+        $this->removeAdapterConfiguration($station, $backend, 'backend', $reloadSupervisor);
+        $this->removeAdapterConfiguration($station, $frontend, 'frontend', $reloadSupervisor);
+
+        // Best-effort cleanup of a pre-split combined config file left over from before an
+        // upgrade.
+        @unlink(self::getLegacySupervisorConfPath($station));
+    }
+
+    private function removeAdapterConfiguration(
+        Station $station,
+        BackendInterface|Frontend\AbstractFrontend|null $adapter,
+        string $category,
+        bool $reloadSupervisor
+    ): void {
+        $configPath = self::getSupervisorConfPath($station, $category);
+
+        if (null === $adapter) {
+            @unlink($configPath);
+            return;
+        }
+
+        $groupName = $adapter->getSupervisorProgramName($station);
+        $supervisor = $adapter->resolveSupervisor($station);
 
         // Try forcing the group to stop, but don't hard-fail if it doesn't.
         if ($reloadSupervisor) {
             try {
-                $this->supervisor->stopProcessGroup($stationGroup);
-                $this->supervisor->removeProcessGroup($stationGroup);
+                $supervisor->stopProcessGroup($groupName);
+                $supervisor->removeProcessGroup($groupName);
             } catch (SupervisorException) {
             }
         }
 
-        $supervisorConfigPath = self::getSupervisorConfPath($station);
-        @unlink($supervisorConfigPath);
+        @unlink($configPath);
 
         if ($reloadSupervisor) {
-            $this->reloadSupervisor();
+            $this->reloadSupervisor($supervisor);
         }
     }
 
@@ -426,14 +532,37 @@ final class Configuration
         );
     }
 
+    /**
+     * Path to a single adapter's own supervisord config file within a station's config dir.
+     *
+     * @param Station|string $configDir
+     * @param string $category 'backend' or 'frontend'.
+     */
     public static function getSupervisorConfPath(
-        Station|string $configDir
+        Station|string $configDir,
+        string $category
     ): string {
         if ($configDir instanceof Station) {
             $configDir = $configDir->getRadioConfigDir();
         }
 
-        return $configDir . '/' . self::PER_STATION_SUPERVISOR_CONF;
+        $fileName = ('frontend' === $category)
+            ? self::SUPERVISOR_CONF_FRONTEND
+            : self::SUPERVISOR_CONF_BACKEND;
+
+        return $configDir . '/' . $fileName;
+    }
+
+    /**
+     * @param Station|string $configDir
+     */
+    public static function getLegacySupervisorConfPath(Station|string $configDir): string
+    {
+        if ($configDir instanceof Station) {
+            $configDir = $configDir->getRadioConfigDir();
+        }
+
+        return $configDir . '/' . self::LEGACY_SUPERVISOR_CONF;
     }
 
     /**
@@ -458,6 +587,13 @@ final class Configuration
         return $defaultPorts;
     }
 
+    /**
+     * The combined, station-wide identifier ("station_{id}") used prior to the backend/frontend
+     * supervisord group split. No longer used internally (each adapter now has its own group,
+     * named via its own getSupervisorProgramName() -- see AbstractLocalAdapter::
+     * getSupervisorFullName()); kept for any external callers that still want a single
+     * per-station identifier that isn't tied to a specific adapter/supervisord group.
+     */
     public static function getSupervisorGroupName(Station $station): string
     {
         return 'station_' . $station->id;

@@ -39,6 +39,7 @@
     }
   ],
   "sftpd": {
+    "_comment_bindings": "address: \"\" is SFTPGo's documented value for 'listen on all available interfaces' (see SFTPGo's binding docs) -- on a dual-stack host this binds both IPv4 and IPv6 wildcard sockets, same as Go's net.Listen behavior generally. Confirmed by reading SFTPGo's own binding documentation rather than assumed; left unchanged since it already covers both address families.",
     "bindings": [
       {
         "port": 2022,

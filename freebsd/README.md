@@ -44,8 +44,8 @@ anything else in either subdirectory.
 2. Provision `mariadb` first (see `mariadb/README.md`) — `webapp`'s
    rc.d script waits on it at boot, and its database user grant is
    scoped specifically to `webapp`'s IP (the value of `WEBAPP_JAIL_IP`
-   in `env.conf`, currently `10.8.0.110`), so get the DB up and the pf
-   rule in place before starting `webapp`.
+   in `env.conf`, currently `10.8.0.110`), so get the DB up before
+   starting `webapp`.
 3. Provision `webapp` (see `webapp/README.md`).
 4. Deploy the AzuraCast PHP application itself into `webapp` (git
    clone/composer install/frontend build) — this isn't covered by
@@ -65,6 +65,27 @@ web stack) is solid before the streaming-engine replacement work
 starts. See `engine/SPEC.md` for the behavioral spec that replacement
 engine must satisfy, and the project plan file for the phase-by-phase
 sequencing.
+
+## Dual-stack (IPv4 + IPv6) audit
+
+Both jails are dual-stack at the network level (`jail.conf.d/*.tmpl`
+already configure each jail's IPv4 *and* IPv6 address). This audit
+checked whether the application-layer configs under `mariadb/` and
+`webapp/` actually use both addresses, and fixed the ones that didn't:
+
+- **MariaDB** now binds both `MARIADB_JAIL_IP` and `MARIADB_JAIL_IP6`
+  (comma-separated `bind-address`, supported since MariaDB 10.4.6), with
+  matching IPv4/IPv6-scoped grants for the `webapp` DB user. See
+  `mariadb/README.md`'s dual-stack section.
+- **nginx** now has a `listen [::]:PORT ...;` counterpart for every
+  IPv4 `listen` directive. See `webapp/README.md`'s dual-stack section.
+- **Valkey** now also binds IPv6 loopback (`::1`) alongside `127.0.0.1`
+  — still loopback-only by design, not exposed on `WEBAPP_JAIL_IP6`.
+- **Centrifugo** and **SFTPGo** were already dual-stack by default
+  (unset/empty bind address = listen on all interfaces, both families)
+  — confirmed by reading each project's own docs, no changes needed.
+- `configure-db.sh`'s default DB host prompt intentionally still
+  defaults to IPv4 (`MARIADB_JAIL_IP`) — see `webapp/README.md` for why.
 
 ## Known open items
 

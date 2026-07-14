@@ -406,9 +406,11 @@ class StationsController extends AbstractApiCrudController
     ): void {
         $newPath = $station->radio_base_dir;
 
-        // Unlink the old path's supervisor config file.
-        $originalConfPath = Configuration::getSupervisorConfPath($originalPath);
-        @unlink($originalConfPath);
+        // Unlink the old path's supervisor config files (the split per-adapter files, plus any
+        // leftover pre-split combined file).
+        @unlink(Configuration::getSupervisorConfPath($originalPath, 'backend'));
+        @unlink(Configuration::getSupervisorConfPath($originalPath, 'frontend'));
+        @unlink(Configuration::getLegacySupervisorConfPath($originalPath));
 
         // Force a reload of supervisor services and stop all for this station.
         $this->configuration->removeConfiguration($station);

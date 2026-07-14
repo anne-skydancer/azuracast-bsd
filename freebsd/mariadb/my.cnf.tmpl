@@ -17,14 +17,21 @@
 [mysqld]
 
 # --- Network binding -------------------------------------------------------
-# Bound to this jail's own IP rather than 127.0.0.1/localhost because
+# Bound to this jail's own IP(s) rather than 127.0.0.1/localhost because
 # there is no shared /var/run/mysqld socket between jails -- the webapp
 # jail can only reach MariaDB over the network, so MariaDB has to be
 # listening on an address that's actually routable from there. Network-
 # level access control (restricting which hosts besides webapp can reach
 # this port) is left entirely to your own firewall policy, if any --
 # out of scope for this project.
-bind-address = @@MARIADB_JAIL_IP@@
+#
+# bind-address accepts a comma-separated list as of MariaDB 10.4.6+ (this
+# jail installs mariadb118-server, well past that) -- both this jail's
+# IPv4 and IPv6 addresses (MARIADB_JAIL_IP / MARIADB_JAIL_IP6 in
+# freebsd/env.conf) are listed so webapp can reach MariaDB over either
+# address family. See 10-provision-db.sh for the matching IPv6-scoped
+# grant that makes an IPv6 connection actually authenticate.
+bind-address = @@MARIADB_JAIL_IP@@,@@MARIADB_JAIL_IP6@@
 port = 3306
 
 # --- Charset / collation ----------------------------------------------------

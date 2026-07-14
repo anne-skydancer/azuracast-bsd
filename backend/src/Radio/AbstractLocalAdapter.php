@@ -88,6 +88,32 @@ abstract class AbstractLocalAdapter
     }
 
     /**
+     * Resolve the Supervisor client to use for a given station.
+     *
+     * Extension point: the default implementation always returns the DI-injected, same-host
+     * supervisor instance. Subclasses (e.g. Icecast) may override this to build a client
+     * pointed at a remote supervisord when the station's frontend runs in a different jail/host.
+     */
+    protected function getSupervisor(Station $station): SupervisorInterface
+    {
+        return $this->supervisor;
+    }
+
+    /**
+     * Public accessor for {@see getSupervisor()}.
+     *
+     * Configuration manages the supervisord config files/groups/reloads for both the backend
+     * and frontend adapters of a station, but isn't a subclass of either, so it needs a way to
+     * resolve each adapter's own (possibly remote) Supervisor client from the outside.
+     * getSupervisor() itself stays protected -- this is a thin public wrapper around it, not a
+     * visibility change to the extension point.
+     */
+    public function resolveSupervisor(Station $station): SupervisorInterface
+    {
+        return $this->getSupervisor($station);
+    }
+
+    /**
      * Indicate if the adapter in question is installed on the server.
      */
     public function isInstalled(): bool
@@ -119,7 +145,7 @@ abstract class AbstractLocalAdapter
         $programName = $this->getSupervisorFullName($station);
 
         try {
-            return $this->supervisor->getProcess($programName)->isRunning();
+            return $this->getSupervisor($station)->getProcess($programName)->isRunning();
         } catch (Fault\BadNameException) {
             return false;
         }
@@ -167,11 +193,15 @@ abstract class AbstractLocalAdapter
 
     public function getSupervisorFullName(Station $station): string
     {
-        return sprintf(
-            '%s:%s',
-            Configuration::getSupervisorGroupName($station),
-            $this->getSupervisorProgramName($station)
-        );
+        // Each adapter (backend/frontend) has its own single-program supervisord group, named
+        // identically to its program -- a common supervisord convention for single-program
+        // groups. This is required (not just cosmetic): a single combined group can't span two
+        // supervisord instances, which backend and frontend now may do (e.g. a remote frontend
+        // jail) -- see Configuration::writeConfiguration(), which writes/reloads each adapter's
+        // group independently and relies on this exact naming matching what it wrote.
+        $programName = $this->getSupervisorProgramName($station);
+
+        return sprintf('%s:%s', $programName, $programName);
     }
 
     /**
@@ -209,7 +239,7 @@ abstract class AbstractLocalAdapter
             $programName = $this->getSupervisorFullName($station);
 
             try {
-                $this->supervisor->stopProcess($programName);
+                $this->getSupervisor($station)->stopProcess($programName);
                 $this->logger->info(
                     'Adapter "' . static::class . '" stopped.',
                     ['station_id' => $station->id, 'station_name' => $station->name]
@@ -234,7 +264,7 @@ abstract class AbstractLocalAdapter
             $programName = $this->getSupervisorFullName($station);
 
             try {
-                $this->supervisor->startProcess($programName);
+                $this->getSupervisor($station)->startProcess($programName);
                 $this->logger->info(
                     'Adapter "' . static::class . '" started.',
                     ['station_id' => $station->id, 'station_name' => $station->name]

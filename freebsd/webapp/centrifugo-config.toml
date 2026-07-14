@@ -11,6 +11,15 @@
 # below is hardcoded to 127.0.0.1:6379/db 0 instead of templated. Update
 # it directly if Valkey's bind address/db index ever changes (see
 # freebsd's valkey.conf, ported from util/docker/redis/redis/redis.conf).
+#
+# Dual-stack note: [http_server] below sets only `port`/`internal_port`,
+# no explicit `address`. Centrifugo (Go net/http under the hood) treats
+# an unset address the same as Go's own default -- listen on the
+# wildcard address for both port and internal_port, which on a
+# dual-stack host binds both IPv4 (0.0.0.0) and IPv6 ([::]) sockets. No
+# change needed here; this was confirmed by reading Centrifugo's
+# documented `address` config option (empty/unset = all interfaces,
+# both address families) rather than assumed.
 
 [http_api]
 insecure = true

@@ -12,11 +12,15 @@
 #   3. Create the `azuracast` database (utf8mb4 / utf8mb4_general_ci, matching
 #      util/docker/mariadb/mariadb/db.sql and backend/config/services.php).
 #   4. Create the `azuracast` DB user, scoped ONLY to
-#      'azuracast'@'10.8.0.110' (the webapp jail's IP) — NOT '%' and NOT
-#      'localhost'. The app connects over the network from a different jail,
-#      so a localhost-scoped or wildcard-scoped grant would either not work
-#      or would be far more permissive than necessary.
-#   5. GRANT that user privileges on `azuracast`.* only.
+#      'azuracast'@'10.8.0.110' (the webapp jail's IPv4 address) AND
+#      'azuracast'@'2001:8a0:6a32:2100::110' (the same jail's IPv6
+#      address, WEBAPP_JAIL_IP6 in env.conf) — NOT '%' and NOT
+#      'localhost'. MariaDB now binds both address families (see
+#      my.cnf.tmpl), so a webapp connecting over either IPv4 or IPv6
+#      needs a matching host-scoped grant to actually authenticate. Both
+#      grants share the same password (AZURACAST_DB_PASSWORD) — this is
+#      one logical user reachable from two addresses, not two users.
+#   5. GRANT that user privileges on `azuracast`.* only (both host forms).
 #
 # --- Setting the DB password ------------------------------------------------
 # Do NOT hardcode a real password in this script. Set it via environment
@@ -55,6 +59,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 DB_NAME="${AZURACAST_DB_NAME:-$AZURACAST_DB_NAME_DEFAULT}"
 DB_USER="${AZURACAST_DB_USER:-$AZURACAST_DB_USER_DEFAULT}"
 DB_USER_HOST="${WEBAPP_JAIL_IP}"
+DB_USER_HOST6="${WEBAPP_JAIL_IP6}"
 DB_PASSWORD="${AZURACAST_DB_PASSWORD:-CHANGE_ME_SET_VIA_ENV}"
 
 if [ "$DB_PASSWORD" = "CHANGE_ME_SET_VIA_ENV" ]; then
@@ -100,9 +105,19 @@ ALTER USER '${DB_USER}'@'${DB_USER_HOST}'
 
 GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'${DB_USER_HOST}';
 
+CREATE USER IF NOT EXISTS '${DB_USER}'@'${DB_USER_HOST6}'
+    IDENTIFIED BY '${DB_PASSWORD}';
+
+ALTER USER '${DB_USER}'@'${DB_USER_HOST6}'
+    IDENTIFIED BY '${DB_PASSWORD}';
+
+GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'${DB_USER_HOST6}';
+
 FLUSH PRIVILEGES;
 SQL
 
-echo "Done. '${DB_USER}'@'${DB_USER_HOST}' now has access to database '${DB_NAME}'."
-echo "Remember: this grant only allows connections originating from ${DB_USER_HOST}"
-echo "(the webapp jail). No '%' or 'localhost' grant was created."
+echo "Done. '${DB_USER}'@'${DB_USER_HOST}' and '${DB_USER}'@'${DB_USER_HOST6}'"
+echo "now have access to database '${DB_NAME}'."
+echo "Remember: these grants only allow connections originating from"
+echo "${DB_USER_HOST} or ${DB_USER_HOST6} (the webapp jail's IPv4 and IPv6"
+echo "addresses). No '%' or 'localhost' grant was created."

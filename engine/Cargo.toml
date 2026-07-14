@@ -19,3 +19,21 @@ serde_json = "1"
 toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Phase 3: real decode/crossfade playback pipeline.
+# symphonia: pure-Rust decode for the container/codec set AzuraCast stations
+# commonly serve (MP3, AAC/ADTS+MP4, OGG/Vorbis, FLAC, WAV). "aac" pulls in
+# ADTS+MP4 support (symphonia does not split AAC any finer than that), "isomp4"
+# is needed alongside "aac" for MP4/M4A containers.
+symphonia = { version = "0.5", features = ["mp3", "aac", "isomp4", "ogg", "vorbis", "flac", "wav", "pcm"] }
+# rubato: sample-rate conversion to the engine's fixed internal pipeline rate.
+rubato = "0.15"
+# ebur128: loudness measurement for cross.smart's dB-level comparisons.
+ebur128 = "0.1"
+# hound: WAV read/write for the --crossfade-test CLI output path.
+hound = "3"
+
+# Phase 4: live-DJ harbor input (Icecast2/HTTP-style source-client TCP
+# listener). base64 was already present transitively (via reqwest); pinned
+# directly here since harbor.rs decodes `Authorization: Basic` headers.
+base64 = "0.22"
