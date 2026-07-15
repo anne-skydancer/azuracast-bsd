@@ -29,7 +29,7 @@ This jail only needs to be able to *reach* MariaDB over TCP at
 |---|---|
 | `00-packages.sh` | Installs nginx, php85 + extensions, Valkey, ffmpeg, git, sudo, etc. via `pkg`; creates the `azuracast` system user and `/var/azuracast/*` directory layout. |
 | `10-centrifugo.sh` | Builds Centrifugo v6.9.0 from source (`go install`) and installs it to `/usr/local/bin/centrifugo`. |
-| `11-sftpgo.sh` | Builds SFTPGo v2.6.4 from source (`go install`) and installs it to `/usr/local/bin/sftpgo`. |
+| `11-sftpgo.sh` | Builds SFTPGo v2.6.4 from source (`git clone` + `go build` — SFTPGo's own `go.mod` has `replace` directives that `go install pkg@version` refuses to honor, confirmed during a real install) and installs it to `/usr/local/bin/sftpgo`, along with the `templates`/`static` assets a plain `go build` doesn't bundle (also confirmed required — SFTPGo crash-loops on startup without them). |
 | `20-supervisor.sh` | Installs supervisord (via `pip`) and creates its socket/log directories. |
 | `supervisord.conf` | Base (non-station) supervisord config — install to `/usr/local/etc/supervisord.conf`. |
 | `crontab` | Per-user crontab (for the `azuracast` user) replacing supercronic. |
@@ -59,7 +59,10 @@ This jail only needs to be able to *reach* MariaDB over TCP at
    ```
 
 3. `sh freebsd/webapp/11-sftpgo.sh`
-   Then copy the config and generate host keys:
+   Builds from a `git clone` of the pinned tag rather than `go install`
+   (see the "Files here" table above for why), and copies the
+   `templates`/`static` assets out of that same checkout before cleaning
+   it up. Then copy the config and generate host keys:
    ```sh
    cp freebsd/webapp/sftpgo.json /var/azuracast/sftpgo/sftpgo.json
    ssh-keygen -t rsa     -b 4096 -f /var/azuracast/storage/sftpgo/id_rsa     -q -N ""
@@ -256,8 +259,14 @@ layer:
   script's comments but not used by default.
 - **Centrifugo/SFTPGo versions**: pinned to v6.9.0 / v2.6.4 respectively,
   matching `util/docker/web/setup/centrifugo.sh` and `sftpgo.sh` exactly.
-  Both are built from source via `go install` since neither publishes
-  FreeBSD binaries.
-- None of this was tested on an actual FreeBSD box as part of this
-  change — treat package names and paths as a well-researched first
-  draft, not a verified install.
+  Both are built from source since neither publishes FreeBSD binaries —
+  Centrifugo via `go install` (its `go.mod` has no `replace` directives),
+  SFTPGo via `git clone` + `go build` (its `go.mod` does have `replace`
+  directives, which `go install pkg@version` refuses to honor — confirmed
+  during a real install; see `11-sftpgo.sh`'s header comment).
+- This directory's scripts have now been exercised against a real
+  FreeBSD box once (2026-07) — the fixes above (extra PHP extensions,
+  php-fpm/nginx/supervisord socket and PID ownership, a self-signed cert
+  placeholder, the SFTPGo build method) came from that run. Treat
+  anything not called out above as still a well-researched first draft,
+  not independently re-verified since.

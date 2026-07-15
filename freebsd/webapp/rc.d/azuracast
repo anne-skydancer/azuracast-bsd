@@ -56,10 +56,38 @@ load_rc_config "$name"
 : ${azuracast_db_host:=""}
 : ${azuracast_db_port:="3306"}
 : ${azuracast_db_wait_timeout:="120"}
-: ${azuracast_user:="azuracast"}
+
+# NOT named azuracast_user: rc.subr(8) reserves every "${name}_user" as
+# its own directive meaning "run $command itself as this user" (via
+# su(1), or chroot(8) if "${name}_chroot" is set) -- since this script's
+# name="azuracast", a variable literally named azuracast_user would be
+# silently claimed by rc.subr for that purpose instead of the narrower
+# one below (which user to su(1) to for the one-time setup commands in
+# azuracast_run_setup()). Confirmed during a real install: that exact
+# collision silently ran supervisord itself (and therefore every child
+# it spawns -- nginx, php-fpm, ...) as the unprivileged azuracast user
+# for the entire lifetime of the service, with no error at the point it
+# happened. Symptoms traced back to it: nginx's "bind() to 0.0.0.0:80
+# failed (13: Permission denied)" (can't bind <1024 as non-root),
+# supervisord.conf's "user = root" failing with "Can't drop privilege as
+# nonroot user" (can't drop privilege by moving to a *more* privileged
+# user), and very likely the su -m environment-resolution oddity noted
+# below (a same-user-to-same-user su -m is a different code path than
+# the usual root-to-user case). See rc.subr(8) for the full reserved
+# "${name}_*" set (_user, _chroot, _program, _pidfile, _env, ...) before
+# picking any new rc.conf variable name for this script.
+: ${azuracast_setup_user:="azuracast"}
 
 supervisord_bin="/usr/local/bin/supervisord"
 supervisord_conf="/usr/local/etc/supervisord.conf"
+
+# Confirmed during a real install: `su -m` does not reliably resolve a
+# bare `php` off $PATH under this rc.subr invocation context, even though
+# `-m` preserves the caller's environment and an interactive shell as the
+# same user resolves `php` fine. Root cause not identified; the absolute
+# path is the confirmed-working fix, so it's used for every su -m call
+# below rather than relying on PATH lookup inside the su'd shell.
+php_bin="/usr/local/bin/php"
 
 pidfile="/var/run/supervisord.pid"
 command="${supervisord_bin}"
@@ -89,6 +117,38 @@ azuracast_wait_for_db()
     echo "MariaDB is reachable."
 }
 
+# Confirmed during a real install: values written to azuracast.env by
+# freebsd/webapp/configure-db.sh (plain unquoted `KEY=VALUE` lines, since
+# it's produced with `printf '%s=%s\n' "$_key" "$_value"`, not shell-quoted)
+# do not reliably reach the PHP process spawned via `su -m` under this
+# rc.subr invocation context -- root cause not identified. The confirmed
+# workaround is exporting the values as real shell variables in this
+# script's own environment before calling `su -m` (which preserves/passes
+# through the caller's environment). This can't be done with a naive `.`
+# (dot-source) of the file, since an unquoted value containing a space
+# (e.g. a generated password) would be dot-sourced as two separate shell
+# words instead of one value -- so this parses each line explicitly via
+# parameter expansion instead, which never word-splits.
+azuracast_export_env_file()
+{
+    env_file="${azuracast_path}/azuracast.env"
+
+    if [ ! -f "${env_file}" ]; then
+        return 0
+    fi
+
+    while IFS= read -r line || [ -n "${line}" ]; do
+        case "${line}" in
+            ''|'#'*)
+                continue
+                ;;
+        esac
+        env_key=${line%%=*}
+        env_value=${line#*=}
+        export "${env_key}=${env_value}"
+    done < "${env_file}"
+}
+
 azuracast_run_setup()
 {
     console="${azuracast_path}/backend/bin/console"
@@ -99,6 +159,8 @@ azuracast_run_setup()
         return 0
     fi
 
+    azuracast_export_env_file
+
     echo "Running one-time AzuraCast setup/migrations..."
 
     # azuracast:setup --init is the real command Docker's app_startup
@@ -106,12 +168,12 @@ azuracast_run_setup()
     # (backend/src/Console/Command/SetupCommand.php, --init flag forces
     # `update=true`, i.e. it runs migrations + asset/settings init and
     # is safe to run on every boot -- it does not reload fixtures).
-    su -m "${azuracast_user}" -c "cd '${azuracast_path}' && php '${console}' azuracast:setup --init" \
+    su -m "${azuracast_setup_user}" -c "cd '${azuracast_path}' && '${php_bin}' '${console}' azuracast:setup --init" \
         || err 1 "azuracast:setup --init failed"
 
     # Best-effort ACME certificate fetch, same as app_startup
     # ("azuracast_cli azuracast:acme:get-certificate || true").
-    su -m "${azuracast_user}" -c "cd '${azuracast_path}' && php '${console}' azuracast:acme:get-certificate" \
+    su -m "${azuracast_setup_user}" -c "cd '${azuracast_path}' && '${php_bin}' '${console}' azuracast:acme:get-certificate" \
         || echo "NOTE: ACME certificate fetch failed/skipped (non-fatal, matches Docker's app_startup behavior)."
 }
 

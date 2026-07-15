@@ -47,6 +47,18 @@
 #         package; it's enabled via php.ini below instead of a pkg
 #         install.
 #
+#   - `php85-fileinfo php85-iconv php85-simplexml php85-xmlreader
+#     php85-xmlwriter php85-tokenizer`: confirmed missing during a real
+#     install (2026-07) -- `composer install` on the actual application
+#     fails without them (`Root composer.json requires PHP extension
+#     ext-fileinfo/ext-iconv/ext-simplexml/ext-xmlreader/ext-xmlwriter *
+#     but it is missing`, plus `nikic/php-parser` requiring
+#     `ext-tokenizer`). These are compiled into PHP's Docker image by
+#     default but aren't part of FreeBSD's base `php85` package, so the
+#     Docker `install-php-extensions` list above isn't sufficient by
+#     itself on FreeBSD. All six confirmed to exist as real packages via
+#     `pkg search`.
+#
 #   - `audiowaveform` (util/docker/web/setup/audiowaveform.sh, BBC's
 #     waveform-generation CLI used for track waveform previews) has NO
 #     FreeBSD port as of this writing. It is NOT installed by this
@@ -88,6 +100,12 @@ pkg install -y \
     php85-ffi \
     php85-sockets \
     php85-maxminddb \
+    php85-fileinfo \
+    php85-iconv \
+    php85-simplexml \
+    php85-xmlreader \
+    php85-xmlwriter \
+    php85-tokenizer \
     valkey \
     ffmpeg \
     git \
@@ -140,8 +158,55 @@ mkdir -p /var/azuracast/www /var/azuracast/stations /var/azuracast/www_tmp \
     /var/azuracast/www_tmp/nginx_client \
     /var/azuracast/www_tmp/nginx_fastcgi \
     /var/azuracast/www_tmp/nginx_cache \
+    /var/azuracast/www_tmp/nginx_proxy \
+    /var/azuracast/www_tmp/nginx_uwsgi \
+    /var/azuracast/www_tmp/nginx_scgi \
     /var/azuracast/www_tmp/sftpgo_temp \
     /var/log/azuracast
 
 chown -R azuracast:azuracast /var/azuracast /var/log/azuracast
 chmod -R 777 /var/azuracast/www_tmp
+
+# nginx's *compiled-in default* error log path (used for very early
+# startup/argument-parsing messages before -c nginx.conf's own
+# `error_log` directive has even been read) is /var/log/nginx/error.log,
+# root-owned by default -- separate from the azuracast-owned
+# /var/log/azuracast/nginx-error.log the custom nginx.conf sets for
+# everything after config parsing succeeds. Confirmed during a real
+# install: without this, nginx fails to start at all
+# ("could not open error log file ... Permission denied") before it even
+# gets to parsing the config that would redirect logging elsewhere.
+mkdir -p /var/log/nginx
+chown -R azuracast:azuracast /var/log/nginx
+
+# php-fpm's default `pid = run/php-fpm.pid` resolves under
+# /usr/local/etc/'s prefix convention to /var/run/php-fpm.pid --
+# root-owned. supervisord launches php-fpm as root (see
+# freebsd/webapp/supervisord.conf's `[supervisord] user = root`), but
+# php-fpm's own pool config sets `user = azuracast`, so the master
+# process privilege-drops to azuracast internally -- it does not stay
+# root the way supervisord itself does. Confirmed during a real install:
+# without this, php-fpm fails to start ("Unable to create the PID file
+# ... Permission denied"). One-line sed
+# patch to the package-owned config file, same pattern as the nginx
+# mime.types M3U8 fix documented in freebsd/webapp/README.md.
+if [ -f /usr/local/etc/php-fpm.conf ]; then
+    sed -i '' 's|^pid = .*|pid = /var/azuracast/php-fpm.pid|' /usr/local/etc/php-fpm.conf
+fi
+
+# nginx's `ssl_certificate`/`ssl_certificate_key` (nginx.conf) point
+# unconditionally at /var/azuracast/storage/acme/ssl.{crt,key}, which
+# don't exist until a real domain's ACME certificate has actually been
+# issued -- out of scope for initial platform bring-up (needs DNS/domain
+# setup first). Confirmed during a real install: a fresh install has no
+# cert at all, so nginx can't start even to serve a "not configured yet"
+# page. Generate a throwaway self-signed placeholder so nginx can start;
+# replace it with a real ACME-issued cert once one exists (this does NOT
+# overwrite an existing cert, so it's safe to re-run this whole script).
+if [ ! -f /var/azuracast/storage/acme/ssl.crt ]; then
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /var/azuracast/storage/acme/ssl.key \
+        -out /var/azuracast/storage/acme/ssl.crt \
+        -subj "/CN=localhost"
+    chown -R azuracast:azuracast /var/azuracast/storage/acme
+fi
