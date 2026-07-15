@@ -6,7 +6,6 @@ namespace App\Nginx;
 
 use App\Entity\Station;
 use App\Event\Nginx\WriteNginxConfiguration;
-use App\Radio\Enums\BackendAdapters;
 use App\Radio\Enums\FrontendAdapters;
 use App\Radio\Frontend\Blocklist\BlocklistParser;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -73,8 +72,8 @@ final class ConfigWriter implements EventSubscriberInterface
     {
         $station = $event->getStation();
 
-        // Only forward Liquidsoap
-        if (BackendAdapters::Liquidsoap !== $station->backend_type) {
+        // Only forward if the station has an enabled backend (WebDJ/harbor input applies to any backend).
+        if (!$station->backend_type->isEnabled()) {
             return;
         }
 

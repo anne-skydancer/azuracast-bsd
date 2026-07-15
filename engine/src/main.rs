@@ -1,4 +1,5 @@
 mod annotate;
+mod audio_processing;
 mod autodj;
 mod callbacks;
 mod config;
@@ -6,7 +7,10 @@ mod control;
 mod crossfade;
 mod decode;
 mod feedback;
+mod harbor;
+mod hls;
 mod media;
+mod output;
 mod pipeline;
 mod prepare;
 mod queue;
@@ -148,11 +152,16 @@ async fn run(cfg: EngineConfig) {
     // `control.rs`'s module doc for why this is a non-blocking poll rather
     // than a wait.
     let control = Arc::new(control::ControlSignals::new());
+    // Phase 4: shared live-DJ harbor state (`harbor.rs`) -- written by the
+    // harbor listener's connection-handling tasks, read by the pipeline
+    // loop and `/streamer/disconnect`.
+    let live = Arc::new(harbor::LiveState::new());
 
     let state = server::AppState {
         control_api_key: cfg.control_api.api_key.clone(),
         queues: queues.clone(),
         control: control.clone(),
+        live: live.clone(),
     };
 
     // `bind_address` is a bare IP literal (no brackets, no port) per the
@@ -190,12 +199,76 @@ async fn run(cfg: EngineConfig) {
 
     let server_task = tokio::spawn(async move { axum::serve(listener, app).await });
 
+    // Phase 4: the live-DJ harbor TCP listener (no-op/doesn't bind at all
+    // if `harbor.enabled = false` -- see `harbor.rs`'s module doc).
+    let harbor_task = tokio::spawn(harbor::run_harbor_listener(
+        cfg.harbor.clone(),
+        callback_client.clone(),
+        live.clone(),
+    ));
+
+    // Phase 5: fan-out tap the pipeline broadcasts every produced PCM chunk
+    // to (see `pipeline.rs`'s `OutputSink`), independent of its local file
+    // sink. Capacity is generous slack for a handful of independent,
+    // possibly briefly-lagging output tasks; a lagging receiver just skips
+    // forward to newer audio (see `output.rs::run_output_once`) rather than
+    // blocking the pipeline or any other output target.
+    let (audio_tap_tx, _) = tokio::sync::broadcast::channel::<std::sync::Arc<Vec<f32>>>(64);
+
+    // Phase 5: one independent encode+push task per configured local mount
+    // and per configured remote relay -- see `output.rs`'s module doc for
+    // the full scope (Icecast2 source-client protocol only, no
+    // `share_encoders`, no HLS, no legacy Shoutcast remotes). No-op (spawns
+    // nothing) if neither `[icecast_output]`/`[[mounts]]` nor `[[remotes]]`
+    // are configured.
+    let output_targets = output::build_targets(&cfg);
+    if output_targets.is_empty() {
+        tracing::info!("no Icecast/relay output targets configured; network output disabled");
+    }
+    for target in output_targets {
+        let tap_rx_source = audio_tap_tx.clone();
+        tokio::spawn(async move {
+            output::run_output_target(target, tap_rx_source).await;
+        });
+    }
+
+    // HLS output (SPEC.md B.8, deferred from Phase 5, now implemented) --
+    // one independent ffmpeg segmenter task per configured rendition, same
+    // broadcast-tap pattern as the Icecast/relay targets above. File-based,
+    // not a network target -- see `hls.rs`'s module doc. No-op (spawns
+    // nothing) if the station has no `[hls]` section or `[[hls_streams]]`
+    // entries configured.
+    if let Some(hls_cfg) = &cfg.hls {
+        if cfg.hls_streams.is_empty() {
+            tracing::warn!("[hls] section present but no [[hls_streams]] configured; HLS output disabled");
+        } else {
+            if let Err(e) = hls::write_master_playlist(hls_cfg, &cfg.hls_streams) {
+                tracing::error!("failed to write HLS master playlist: {e}");
+            }
+
+            for stream in cfg.hls_streams.clone() {
+                let hls_cfg = hls_cfg.clone();
+                let tap_rx_source = audio_tap_tx.clone();
+                tokio::spawn(async move {
+                    hls::run_hls_rendition(stream, hls_cfg, tap_rx_source).await;
+                });
+            }
+        }
+    }
+
     // Phase 3: the real decode/crossfade/AutoDJ playback pipeline, replacing
     // Phase 2's demo `nextsong_loop`. See `pipeline.rs` for the full
-    // orchestration (priority queues -> AutoDJ -> decode -> autocue/
-    // replaygain -> crossfade -> feedback -> local file sink).
-    let pipeline =
-        pipeline::Pipeline::new(callback_client.clone(), queues.clone(), control.clone(), &cfg);
+    // orchestration (priority queues -> live harbor -> AutoDJ -> decode ->
+    // autocue/replaygain -> crossfade -> feedback -> local file sink +
+    // Phase 5's network output tap).
+    let pipeline = pipeline::Pipeline::new(
+        callback_client.clone(),
+        queues.clone(),
+        control.clone(),
+        live.clone(),
+        &cfg,
+        audio_tap_tx,
+    );
     let pipeline_task = tokio::spawn(async move { pipeline.run().await });
 
     tokio::select! {
@@ -204,6 +277,12 @@ async fn run(cfg: EngineConfig) {
                 Ok(Ok(())) => tracing::warn!("control API server exited"),
                 Ok(Err(e)) => tracing::error!("control API server error: {e}"),
                 Err(e) => tracing::error!("control API server task panicked: {e}"),
+            }
+        }
+        res = harbor_task => {
+            match res {
+                Ok(()) => tracing::warn!("harbor listener task exited unexpectedly"),
+                Err(e) => tracing::error!("harbor listener task panicked: {e}"),
             }
         }
         res = pipeline_task => {

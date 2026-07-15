@@ -8,7 +8,6 @@ use App\Entity\Station;
 use App\Event\Radio\AnnotateNextSong;
 use App\Radio\Adapters;
 use App\Radio\AutoDJ\Queue;
-use App\Radio\Backend\Liquidsoap;
 use App\Radio\Enums\AudioQueues;
 use Monolog\LogRecord;
 use Psr\EventDispatcher\EventDispatcherInterface;
@@ -72,10 +71,9 @@ final class QueueInterruptingTracks extends AbstractTask
             return;
         }
 
-        // This feature only works on Liquidsoap.
         $backend = $this->adapters->getBackendAdapter($station);
 
-        if (!($backend instanceof Liquidsoap)) {
+        if (null === $backend) {
             return;
         }
 

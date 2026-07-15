@@ -91,8 +91,8 @@ const backendStartUri = getStationApiUrl("/backend/start");
 const backendStopUri = getStationApiUrl("/backend/stop");
 
 const backendName = computed(() => {
-    if (stationData.value.backendType === BackendAdapters.Liquidsoap) {
-        return "Liquidsoap";
+    if (stationData.value.backendType === BackendAdapters.StreamEngine) {
+        return "Stream Engine";
     }
     return "";
 });

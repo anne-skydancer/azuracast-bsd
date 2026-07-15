@@ -5,13 +5,11 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Entity\Api\ResolvableUrl;
-use App\Radio\Backend\Liquidsoap\EncodableInterface;
-use App\Radio\Backend\Liquidsoap\EncodingFormat;
-use App\Radio\Backend\Liquidsoap\OutputtableInterface;
-use App\Radio\Backend\Liquidsoap\OutputtableSource;
-use App\Radio\Enums\FrontendAdapters;
+use App\Radio\Backend\EncodableInterface;
+use App\Radio\Backend\EncodingFormat;
+use App\Radio\Backend\OutputtableInterface;
+use App\Radio\Backend\OutputtableSource;
 use App\Radio\Enums\StreamFormats;
-use App\Radio\Enums\StreamProtocols;
 use App\Radio\Frontend\AbstractFrontend;
 use App\Utilities\Urls;
 use Doctrine\ORM\Mapping as ORM;
@@ -260,9 +258,9 @@ final class StationMount implements
             host: '127.0.0.1',
             port: $frontendConfig->port,
             mount: $this->name,
-            protocol: $adapterType === FrontendAdapters::Shoutcast
-                ? StreamProtocols::Icy
-                : null,
+            // No local frontend type carries a non-standard source protocol anymore
+            // (Shoutcast-as-local-frontend was removed) -- always plain Icecast/HTTP.
+            protocol: null,
             username: '',
             password: $frontendConfig->source_pw,
             isPublic: $this->is_public

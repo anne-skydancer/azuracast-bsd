@@ -27,6 +27,38 @@ pub struct EngineConfig {
     /// own "no-op if `!station->enable_streamers`" behavior).
     #[serde(default)]
     pub harbor: HarborConfig,
+    /// New post-cutover (replaces the old Liquidsoap-only `nrj`/`master_me`/
+    /// `stereo_tool` post-processing chain, which had no Rust equivalent).
+    /// Absent entirely from a config file still parses fine (falls back to
+    /// `AudioProcessingConfig::default()`, i.e. `method = None` -- no
+    /// processing applied). See `audio_processing.rs`.
+    #[serde(default)]
+    pub audio_processing: AudioProcessingConfig,
+    /// New in Phase 5 (SPEC.md B.7/B.14). Present only if the station has a
+    /// local Icecast frontend at all; entirely absent means no local
+    /// frontend and `mounts` (below) should be treated as meaningless even
+    /// if somehow non-empty (see `output.rs::build_targets`).
+    #[serde(default)]
+    pub icecast_output: Option<IcecastOutputConfig>,
+    /// New in Phase 5 (SPEC.md B.7). Zero or more local Icecast mount
+    /// points, only meaningful alongside `icecast_output`.
+    #[serde(default)]
+    pub mounts: Vec<MountConfig>,
+    /// New in Phase 5 (SPEC.md B.9). Zero or more third-party relay
+    /// targets, independent of `icecast_output`/`mounts` -- a station can
+    /// relay to remote servers with or without also running its own local
+    /// Icecast frontend.
+    #[serde(default)]
+    pub remotes: Vec<RemoteConfig>,
+    /// New post-cutover (SPEC.md B.8, deferred from Phase 5, now
+    /// implemented). Present only when the station has `enable_hls` and at
+    /// least one `StationHlsStream` configured -- see `hls.rs`.
+    #[serde(default)]
+    pub hls: Option<HlsConfig>,
+    /// New post-cutover (SPEC.md B.8). One entry per configured HLS
+    /// rendition (bitrate ladder), only meaningful alongside `hls`.
+    #[serde(default)]
+    pub hls_streams: Vec<HlsStreamConfig>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -168,6 +200,129 @@ impl Default for HarborConfig {
             max_buffer_secs: None,
         }
     }
+}
+
+/// Audio post-processing method selection (`StationBackendConfiguration::
+/// audio_processing_method`, PHP-side `AudioProcessingMethods` enum). Every
+/// field defaults sensibly when the section (or an individual field within
+/// it) is absent, matching `CrossfadeConfig`/`HarborConfig`'s established
+/// pattern -- an absent section means no processing at all, never a startup
+/// error.
+#[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
+pub struct AudioProcessingConfig {
+    /// One of `"none"`, `"nrj"`, `"stereo_tool"`. Unrecognized values are
+    /// treated the same as `"none"` (logged, not a config error) -- see
+    /// `audio_processing::Processor::from_config`.
+    pub method: String,
+    /// Whether post-processing applies to live-DJ chunks too, or only to
+    /// AutoDJ-sourced audio (`StationBackendConfiguration::
+    /// post_processing_include_live`). Meaningless when `method == "none"`.
+    pub include_live: bool,
+    /// Absolute path to the operator-installed `stereo_tool` CLI binary.
+    /// Only present (and only meaningful) when `method == "stereo_tool"`.
+    #[serde(default)]
+    pub stereo_tool_binary: Option<String>,
+    /// Absolute path to the station's uploaded Stereo Tool preset/config
+    /// file, passed to the binary's `-s` flag.
+    #[serde(default)]
+    pub stereo_tool_preset_path: Option<String>,
+    /// Omitted entirely (not empty-string) when the station has no license
+    /// key configured -- Stereo Tool runs in a functionality-limited demo
+    /// mode in that case, same as the historical Liquidsoap integration.
+    #[serde(default)]
+    pub stereo_tool_license_key: Option<String>,
+}
+
+impl Default for AudioProcessingConfig {
+    fn default() -> Self {
+        Self {
+            method: "none".to_string(),
+            include_live: false,
+            stereo_tool_binary: None,
+            stereo_tool_preset_path: None,
+            stereo_tool_license_key: None,
+        }
+    }
+}
+
+/// Local Icecast frontend connection info (SPEC.md B.7/B.14's
+/// `output.icecast(host=..., port=..., password=...)` target). New in
+/// Phase 5. Present in the TOML only when the station actually runs a
+/// local Icecast frontend at all; see `output.rs::build_targets` for what
+/// happens if `[[mounts]]` entries exist without this section (defensive
+/// warn-and-skip, since PHP's contract says this shouldn't happen).
+#[derive(Debug, Deserialize, Clone)]
+pub struct IcecastOutputConfig {
+    pub host: String,
+    pub port: u16,
+    pub source_password: String,
+}
+
+/// One local Icecast mount point (SPEC.md B.7 `writeLocalBroadcastConfiguration`
+/// / B.14 `getOutputString`). New in Phase 5. `format` is one of `"mp3"`,
+/// `"aac"`, `"ogg"`, `"opus"`, `"flac"` (see `output::OutputFormat::parse`);
+/// an unrecognized value is logged and that single mount is skipped rather
+/// than failing config load entirely.
+#[derive(Debug, Deserialize, Clone)]
+pub struct MountConfig {
+    pub path: String,
+    pub format: String,
+    pub bitrate: u32,
+    pub is_public: bool,
+}
+
+/// One third-party relay target (SPEC.md B.9 `writeRemoteBroadcastConfiguration`).
+/// New in Phase 5. `protocol` is a fixed contract field from PHP, but this
+/// engine only implements `"icecast"` -- any other value (e.g. legacy
+/// Shoutcast/RSAS) is logged as a warning and that remote is skipped, not
+/// treated as a config error (see `output.rs::build_targets`).
+#[derive(Debug, Deserialize, Clone)]
+pub struct RemoteConfig {
+    pub host: String,
+    pub port: u16,
+    pub mount: String,
+    /// Omitted entirely (rather than empty-string) when the station has no
+    /// explicit source username configured. `output.rs` falls back to the
+    /// conventional Icecast/Liquidsoap default username `"source"` in that
+    /// case -- see its doc comment.
+    #[serde(default)]
+    pub username: Option<String>,
+    pub password: String,
+    pub format: String,
+    pub bitrate: u32,
+    pub is_public: bool,
+    pub protocol: String,
+}
+
+/// File-based HLS segmenting output (SPEC.md B.8's `output.file.hls(...)`
+/// call). New post-cutover, deferred from Phase 5. Unlike
+/// `[icecast_output]`, this isn't a network target -- `base_dir` is a local
+/// filesystem path (`station->getRadioHlsDir()`) that nginx serves directly
+/// (`Nginx\ConfigWriter::writeHlsSection`, unchanged by this engine).
+#[derive(Debug, Deserialize, Clone)]
+pub struct HlsConfig {
+    pub base_dir: String,
+    /// SPEC.md's `hls_segment_length` (seconds), default 4.
+    pub segment_secs: f64,
+    /// SPEC.md's `hls_segments_in_playlist`, default 5.
+    pub segments_in_playlist: u32,
+    /// SPEC.md's `hls_segments_overhead`, default 2 -- how many extra
+    /// already-rolled-off segments ffmpeg keeps on disk before deleting
+    /// them (`-hls_delete_threshold`), matching the old system's grace
+    /// window for in-flight client requests.
+    pub segments_overhead: u32,
+}
+
+/// One HLS rendition (SPEC.md B.8's per-stream tuple in `hls_streams`). New
+/// post-cutover. Always encoded as AAC-LC regardless of the station's
+/// nominally-configured `HlsStreamProfiles` value -- see `hls.rs`'s module
+/// doc for why (same `libfdk_aac`-avoidance constraint `output.rs` already
+/// documents for its own AAC encoding).
+#[derive(Debug, Deserialize, Clone)]
+pub struct HlsStreamConfig {
+    pub name: String,
+    pub bitrate: u32,
 }
 
 /// Reads and parses the config file at `path`. Fails fast (returns `Err`)

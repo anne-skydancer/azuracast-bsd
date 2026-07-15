@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Entity\Api\ResolvableUrl;
-use App\Radio\Backend\Liquidsoap\EncodableInterface;
-use App\Radio\Backend\Liquidsoap\EncodingFormat;
-use App\Radio\Backend\Liquidsoap\OutputtableInterface;
-use App\Radio\Backend\Liquidsoap\OutputtableSource;
+use App\Radio\Backend\EncodableInterface;
+use App\Radio\Backend\EncodingFormat;
+use App\Radio\Backend\OutputtableInterface;
+use App\Radio\Backend\OutputtableSource;
 use App\Radio\Enums\RemoteAdapters;
 use App\Radio\Enums\StreamFormats;
 use App\Radio\Enums\StreamProtocols;

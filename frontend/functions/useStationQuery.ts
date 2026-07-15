@@ -47,7 +47,7 @@ const blankStationGlobals: VueStationGlobals = {
         mountPoints: false,
         hlsStreams: false,
         remoteRelays: false,
-        customLiquidsoapConfig: false,
+        engineConfig: false,
         autoDjQueue: false,
     },
     ipGeoAttribution: "N/A",

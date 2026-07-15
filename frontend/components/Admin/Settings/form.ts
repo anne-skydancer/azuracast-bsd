@@ -22,7 +22,6 @@ type Form = Required<
         | "always_use_ssl"
         | "ip_source"
         | "api_access_control"
-        | "enable_liquidsoap_editing"
         | "enable_all_webhooks"
         | "check_for_updates"
         | "acme_email"
@@ -56,7 +55,6 @@ export const useAdminSettingsForm = defineStore("form-admin-settings", () => {
         always_use_ssl: false,
         ip_source: IpSources.Local,
         api_access_control: "*",
-        enable_liquidsoap_editing: true,
         enable_all_webhooks: true,
         check_for_updates: true,
         acme_email: "",

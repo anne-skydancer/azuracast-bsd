@@ -87,7 +87,7 @@ use Psr\Http\Message\ResponseInterface;
     OA\Post(
         path: '/station/{station_id}/backend/{action}',
         operationId: 'doBackendServiceAction',
-        summary: 'Perform service control actions on the radio backend (Liquidsoap)',
+        summary: 'Perform service control actions on the radio backend',
         tags: [OpenApi::TAG_STATIONS_BROADCASTING],
         parameters: [
             new OA\Parameter(ref: OpenApi::REF_STATION_ID_REQUIRED),

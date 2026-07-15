@@ -83,10 +83,7 @@ final class GetDashboardAction implements SingleActionInterface
                 mountPoints: StationFeatures::MountPoints->supportedForStation($station, $settings),
                 hlsStreams: StationFeatures::HlsStreams->supportedForStation($station, $settings),
                 remoteRelays: StationFeatures::RemoteRelays->supportedForStation($station, $settings),
-                customLiquidsoapConfig: StationFeatures::CustomLiquidsoapConfig->supportedForStation(
-                    $station,
-                    $settings
-                ),
+                engineConfig: StationFeatures::EngineConfig->supportedForStation($station, $settings),
                 autoDjQueue: $station->supportsAutoDjQueue(),
             ),
             ipGeoAttribution: $this->ipGeolocation->getAttribution(),

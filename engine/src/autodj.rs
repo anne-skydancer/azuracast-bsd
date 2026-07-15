@@ -1,7 +1,8 @@
 //! AutoDJ next-track resolution with SPEC.md C.3's retry semantics, and the
-//! priority-queue-vs-AutoDJ dispatch from SPEC.md C.8 (scope-restricted per
-//! the task: no live harbor, no remote-URL fallback, no schedule switches
-//! -- those are either a later phase or entirely PHP's job already).
+//! priority-queue-vs-AutoDJ dispatch from SPEC.md C.8. Phase 4 adds the
+//! live-DJ harbor slot: `interrupting_requests` > live > `requests` >
+//! AutoDJ (no remote-URL fallback, no schedule switches -- those remain
+//! either a later phase or entirely PHP's job already).
 
 use std::path::Path;
 use std::time::Duration;
@@ -9,6 +10,7 @@ use std::time::Duration;
 use crate::annotate::parse_annotated_uri;
 use crate::callbacks::CallbackClient;
 use crate::decode::decode_to_pcm;
+use crate::harbor::LiveState;
 use crate::media::resolve_media;
 use crate::prepare::{prepare_fallback_track, prepare_track, PreparedTrack};
 use crate::queue::TrackQueues;
@@ -16,21 +18,47 @@ use crate::queue::TrackQueues;
 /// SPEC.md C.3: `retry_delay=10.` -- fixed, not station-configurable.
 pub const RETRY_DELAY: Duration = Duration::from_secs(10);
 
-/// Resolves the next track to play, in priority order: `interrupting_requests`
-/// > `requests` > AutoDJ (`nextsong`). Never returns without a playable
-/// track: on repeated AutoDJ failure it loops the configured fallback file
-/// (SPEC.md C.8's `error_jingle`) if one is set, or produces a
-/// `RETRY_DELAY`-long burst of silence (and genuinely waits out that delay)
-/// if not, so the pipeline never crashes or stalls even with PHP
-/// unreachable and no fallback configured.
+/// Resolves the next track to play, in priority order:
+/// `interrupting_requests` > live-DJ harbor (if ready) > `requests` >
+/// AutoDJ (`nextsong`). Never returns without a playable track: on
+/// repeated AutoDJ failure it loops the configured fallback file (SPEC.md
+/// C.8's `error_jingle`) if one is set, or produces a `RETRY_DELAY`-long
+/// burst of silence (and genuinely waits out that delay) if not, so the
+/// pipeline never crashes or stalls even with PHP unreachable and no
+/// fallback configured.
+///
+/// `live` is `None` when the harbor listener is disabled entirely
+/// (`harbor.enabled = false`); `Some` but not-ready is the normal
+/// "no DJ currently connected" state.
 pub async fn fetch_next_track(
     client: &CallbackClient,
     queues: &TrackQueues,
+    live: Option<&LiveState>,
     replaygain_enabled: bool,
     fallback_file_path: Option<&str>,
 ) -> PreparedTrack {
     loop {
-        if let Some(uri) = queues.pop_next() {
+        if let Some(uri) = queues.pop_interrupting() {
+            match resolve_and_prepare(client, &uri, replaygain_enabled).await {
+                Ok(track) => return track,
+                Err(e) => {
+                    tracing::warn!("failed to prepare interrupting-queue track '{uri}' (skipping): {e}");
+                    continue;
+                }
+            }
+        }
+
+        if let Some(live) = live {
+            if live.is_ready() {
+                if let Some(track) = live.next_chunk().await {
+                    return track;
+                }
+                // Channel closed mid-check (connection just ended): fall
+                // through to requests/AutoDJ below, same as "never ready".
+            }
+        }
+
+        if let Some(uri) = queues.pop_requests() {
             match resolve_and_prepare(client, &uri, replaygain_enabled).await {
                 Ok(track) => return track,
                 Err(e) => {

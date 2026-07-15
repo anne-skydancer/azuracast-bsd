@@ -26,7 +26,7 @@
                 </p>
                 <p>
                     {{
-                        $gettext('Audio transcoding applications like Liquidsoap use a consistent amount of CPU over time, which gradually drains this available credit. If you regularly see stolen CPU time, you should consider migrating to a VM that has CPU resources dedicated to your instance.')
+                        $gettext('Audio transcoding applications like the AzuraCast streaming backend use a consistent amount of CPU over time, which gradually drains this available credit. If you regularly see stolen CPU time, you should consider migrating to a VM that has CPU resources dedicated to your instance.')
                     }}
                 </p>
             </div>

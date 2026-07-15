@@ -202,7 +202,7 @@
         </div>
 
         <template
-            v-if="isLiquidsoap && userAllowedForStation(StationPermissions.Broadcasting)"
+            v-if="isStreamEngine && userAllowedForStation(StationPermissions.Broadcasting)"
             #footer_actions
         >
             <button
@@ -246,7 +246,7 @@
         </template>
     </card-page>
 
-    <template v-if="isLiquidsoap && userAllowedForStation(StationPermissions.Broadcasting)">
+    <template v-if="isStreamEngine && userAllowedForStation(StationPermissions.Broadcasting)">
         <update-metadata-modal ref="$updateMetadataModal" />
     </template>
 </template>
@@ -304,8 +304,8 @@ const langListeners = computed(() => {
     );
 });
 
-const isLiquidsoap = computed(() => {
-    return stationData.value.backendType === BackendAdapters.Liquidsoap;
+const isStreamEngine = computed(() => {
+    return stationData.value.backendType === BackendAdapters.StreamEngine;
 });
 
 const { vLightbox } = useLightbox();

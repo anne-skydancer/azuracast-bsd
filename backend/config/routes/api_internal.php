@@ -16,9 +16,9 @@ return static function (RouteCollectorProxy $group) {
                 function (RouteCollectorProxy $group) {
                     $group->map(
                         ['GET', 'POST'],
-                        '/liquidsoap/{action}',
-                        Controller\Api\Internal\LiquidsoapAction::class
-                    )->setName('api:internal:liquidsoap')
+                        '/engine/{action}',
+                        Controller\Api\Internal\EngineCallbackAction::class
+                    )->setName('api:internal:engine')
                         ->add(Middleware\RequireInternalConnection::class);
 
                     // Icecast internal auth functions

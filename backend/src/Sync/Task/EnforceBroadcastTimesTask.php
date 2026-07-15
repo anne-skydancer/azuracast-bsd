@@ -6,8 +6,6 @@ namespace App\Sync\Task;
 
 use App\Radio\Adapters;
 use App\Radio\AutoDJ\Scheduler;
-use App\Radio\Backend\Liquidsoap;
-use App\Radio\Enums\BackendAdapters;
 
 final class EnforceBroadcastTimesTask extends AbstractTask
 {
@@ -25,7 +23,7 @@ final class EnforceBroadcastTimesTask extends AbstractTask
     public function run(bool $force = false): void
     {
         foreach ($this->iterateStations() as $station) {
-            if (BackendAdapters::Liquidsoap !== $station->backend_type) {
+            if (!$station->backend_type->isEnabled()) {
                 continue;
             }
 
@@ -35,10 +33,9 @@ final class EnforceBroadcastTimesTask extends AbstractTask
             }
 
             if (!$this->scheduler->canStreamerStreamNow($currentStreamer)) {
-                /** @var Liquidsoap $adapter */
                 $adapter = $this->adapters->getBackendAdapter($station);
 
-                $adapter->disconnectStreamer($station);
+                $adapter?->disconnectStreamer($station);
             }
         }
     }

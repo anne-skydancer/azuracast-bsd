@@ -7,7 +7,7 @@ const npEmpty: ApiNowPlaying = {
         shortcode: "station_name",
         description: "Station Description.",
         frontend: "icecast",
-        backend: "liquidsoap",
+        backend: "stream_engine",
         listen_url: "",
         url: "",
         playlist_pls_url: "",

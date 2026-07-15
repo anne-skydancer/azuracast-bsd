@@ -6,13 +6,11 @@ namespace App\Entity;
 
 use App\Doctrine\AbstractArrayEntity;
 use App\Entity\Enums\StationBackendPerformanceModes;
-use App\Radio\Backend\Liquidsoap\EncodingFormat;
+use App\Radio\Backend\EncodingFormat;
 use App\Radio\Enums\AudioProcessingMethods;
 use App\Radio\Enums\CrossfadeModes;
-use App\Radio\Enums\MasterMePresets;
 use App\Radio\Enums\StreamFormats;
 use App\Utilities\Types;
-use LogicException;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(schema: "StationBackendConfiguration", type: "object")]
@@ -145,36 +143,6 @@ final class StationBackendConfiguration extends AbstractArrayEntity
     #[OA\Property]
     public ?string $stereo_tool_configuration_path = null {
         set => Types::stringOrNull($value, true);
-    }
-
-    #[OA\Property]
-    public ?string $master_me_preset = null {
-        set (string|MasterMePresets|null $value) {
-            if ($value instanceof MasterMePresets) {
-                $value = $value->value;
-            } elseif ($value !== null) {
-                $value = strtolower($value);
-
-                if (null === MasterMePresets::tryFrom($value)) {
-                    $value = null;
-                }
-            }
-
-            $this->master_me_preset = $value;
-        }
-    }
-
-    public function getMasterMePresetEnum(): MasterMePresets
-    {
-        return MasterMePresets::tryFrom($this->master_me_preset ?? '')
-            ?? MasterMePresets::default();
-    }
-
-    protected const int MASTER_ME_DEFAULT_LOUDNESS_TARGET = -16;
-
-    #[OA\Property]
-    public int $master_me_loudness_target = self::MASTER_ME_DEFAULT_LOUDNESS_TARGET {
-        set (int|string|null $value) => Types::int($value, self::MASTER_ME_DEFAULT_LOUDNESS_TARGET);
     }
 
     #[OA\Property]
@@ -323,87 +291,5 @@ final class StationBackendConfiguration extends AbstractArrayEntity
     public bool $enable_auto_cue = false;
 
     #[OA\Property]
-    public bool $write_playlists_to_liquidsoap = false;
-
-    #[OA\Property]
     public bool $share_encoders = false;
-
-    /*
-     * Liquidsoap Custom Configuration Sections
-     */
-
-    public const string CUSTOM_TOP = 'custom_config_top';
-
-    #[OA\Property(
-        description: 'Custom Liquidsoap Configuration: Top Section'
-    )]
-    public ?string $custom_config_top = null;
-
-    public const string CUSTOM_PRE_PLAYLISTS = 'custom_config_pre_playlists';
-
-    #[OA\Property(
-        description: 'Custom Liquidsoap Configuration: Pre-Playlists Section'
-    )]
-    public ?string $custom_config_pre_playlists = null;
-
-    public const string CUSTOM_PRE_LIVE = 'custom_config_pre_live';
-
-    #[OA\Property(
-        description: 'Custom Liquidsoap Configuration: Pre-Live Section'
-    )]
-    public ?string $custom_config_pre_live = null;
-
-    public const string CUSTOM_PRE_FADE = 'custom_config_pre_fade';
-
-    #[OA\Property(
-        description: 'Custom Liquidsoap Configuration: Pre-Fade Section'
-    )]
-    public ?string $custom_config_pre_fade = null;
-
-    public const string CUSTOM_PRE_BROADCAST = 'custom_config';
-
-    #[OA\Property(
-        description: 'Custom Liquidsoap Configuration: Pre-Broadcast Section'
-    )]
-    public ?string $custom_config = null;
-
-    public const string CUSTOM_BOTTOM = 'custom_config_bottom';
-
-    #[OA\Property(
-        description: 'Custom Liquidsoap Configuration: Post-Broadcast Section'
-    )]
-    public ?string $custom_config_bottom = null;
-
-    /** @return array<int, string> */
-    public static function getCustomConfigurationSections(): array
-    {
-        return [
-            self::CUSTOM_TOP,
-            self::CUSTOM_PRE_PLAYLISTS,
-            self::CUSTOM_PRE_FADE,
-            self::CUSTOM_PRE_LIVE,
-            self::CUSTOM_PRE_BROADCAST,
-            self::CUSTOM_BOTTOM,
-        ];
-    }
-
-    public function getCustomConfigurationSection(string $section): ?string
-    {
-        $allSections = self::getCustomConfigurationSections();
-        if (!in_array($section, $allSections, true)) {
-            throw new LogicException('Invalid custom configuration section.');
-        }
-
-        return $this->$section;
-    }
-
-    public function setCustomConfigurationSection(string $section, ?string $value = null): void
-    {
-        $allSections = self::getCustomConfigurationSections();
-        if (!in_array($section, $allSections, true)) {
-            throw new LogicException('Invalid custom configuration section.');
-        }
-
-        $this->$section = $value;
-    }
 }

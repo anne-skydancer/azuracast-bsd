@@ -35,7 +35,6 @@
     "chartjs-adapter-luxon": "^1.1.0",
     "chartjs-plugin-zoom": "^2.0.0",
     "codemirror": "^6",
-    "codemirror-lang-liquidsoap": "^0.4",
     "es-toolkit": "^1.39.10",
     "hls.js": "^1.1.5",
     "leaflet": "^1.7.1",

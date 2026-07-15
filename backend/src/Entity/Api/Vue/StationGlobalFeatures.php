@@ -33,7 +33,7 @@ final readonly class StationGlobalFeatures
         #[OA\Property]
         public bool $remoteRelays = false,
         #[OA\Property]
-        public bool $customLiquidsoapConfig = false,
+        public bool $engineConfig = false,
         #[OA\Property]
         public bool $autoDjQueue = false
     ) {

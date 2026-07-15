@@ -100,6 +100,7 @@ name = "azuracast-engine"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "ebur128",
  "hound",
  "reqwest",

@@ -25,10 +25,6 @@ final readonly class StationsFormProps
         )]
         public array $countries,
         #[OA\Property]
-        public bool $isRsasInstalled,
-        #[OA\Property]
-        public bool $isShoutcastInstalled,
-        #[OA\Property]
         public bool $isStereoToolInstalled
     ) {
     }

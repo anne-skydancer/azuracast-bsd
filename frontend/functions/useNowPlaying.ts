@@ -139,8 +139,8 @@ export default function useNowPlaying(props: MaybeRef<ApiNowPlayingVueProps>) {
                         setNowPlaying(jsonData.np);
                     } else {
                         // SSE events often dispatch *too quickly* relative to the delays involved in
-                        // Liquidsoap and Icecast, so we delay these changes from showing up to better
-                        // approximate when listeners will really hear the track change.
+                        // the streaming backend and Icecast, so we delay these changes from showing up
+                        // to better approximate when listeners will really hear the track change.
                         setTimeout(() => {
                             setNowPlaying(jsonData.np);
                         }, 3000);

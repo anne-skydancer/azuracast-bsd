@@ -27,7 +27,6 @@ You can report any vulnerabilities directly to us if they relate to the core Azu
 ## Out of Scope
 
 AzuraCast is not responsible for the development or maintenance of several pieces of "upstream" software that we incorporate into our own product. This list of software includes, but is not limited to:
- - Liquidsoap
  - Icecast
  - SHOUTcast
  - Nginx

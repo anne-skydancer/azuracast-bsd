@@ -6,7 +6,6 @@ import {
     BackendAdapters,
     CrossfadeModes,
     FrontendAdapters,
-    MasterMePresets,
     Station,
     StationBackendConfiguration,
     StationFrontendConfiguration,
@@ -21,13 +20,7 @@ export type StationRecord = Omit<
     frontend_config: Required<StationFrontendConfiguration>;
     backend_config: Omit<
         Required<StationBackendConfiguration>,
-        | "stereo_tool_configuration_path"
-        | "custom_config_top"
-        | "custom_config_pre_playlists"
-        | "custom_config_pre_live"
-        | "custom_config_pre_fade"
-        | "custom_config"
-        | "custom_config_bottom"
+        "stereo_tool_configuration_path"
     >;
     media_storage_location: string | number;
     recordings_storage_location: string | number;
@@ -55,6 +48,10 @@ export const useAdminStationsForm = defineStore("form-admin-stations", () => {
             admin_pw: "",
             relay_pw: "",
             streamer_pw: "",
+            host: null,
+            supervisor_port: null,
+            supervisor_username: null,
+            supervisor_password: null,
             port: null,
             max_listeners: null,
             custom_config: "",
@@ -63,19 +60,16 @@ export const useAdminStationsForm = defineStore("form-admin-stations", () => {
             allowed_ips: "",
             banned_user_agents: "",
         },
-        backend_type: BackendAdapters.Liquidsoap,
+        backend_type: BackendAdapters.StreamEngine,
         backend_config: {
             crossfade_type: CrossfadeModes.Normal,
             crossfade: 2,
             crossfade_smart_high: -15,
             crossfade_smart_medium: -32,
             crossfade_smart_margin: 8,
-            write_playlists_to_liquidsoap: true,
             share_encoders: false,
             audio_processing_method: AudioProcessingMethods.None,
             post_processing_include_live: true,
-            master_me_preset: MasterMePresets.MusicGeneral,
-            master_me_loudness_target: -16,
             stereo_tool_license_key: "",
             enable_auto_cue: false,
             enable_replaygain_metadata: false,
@@ -150,6 +144,10 @@ export const useAdminStationsForm = defineStore("form-admin-stations", () => {
                     fields.frontend_config.sc_user_id,
                     fields.frontend_config.source_pw,
                     fields.frontend_config.admin_pw,
+                    fields.frontend_config.host,
+                    fields.frontend_config.supervisor_port,
+                    fields.frontend_config.supervisor_username,
+                    fields.frontend_config.supervisor_password,
                     fields.frontend_config.port,
                     fields.frontend_config.max_listeners,
                     fields.frontend_config.custom_config,
@@ -165,12 +163,9 @@ export const useAdminStationsForm = defineStore("form-admin-stations", () => {
                     fields.backend_config.crossfade_smart_high,
                     fields.backend_config.crossfade_smart_medium,
                     fields.backend_config.crossfade_smart_margin,
-                    fields.backend_config.write_playlists_to_liquidsoap,
                     fields.backend_config.share_encoders,
                     fields.backend_config.audio_processing_method,
                     fields.backend_config.post_processing_include_live,
-                    fields.backend_config.master_me_preset,
-                    fields.backend_config.master_me_loudness_target,
                     fields.backend_config.stereo_tool_license_key,
                     fields.backend_config.enable_auto_cue,
                     fields.backend_config.enable_replaygain_metadata,

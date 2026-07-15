@@ -46,7 +46,7 @@ final class Station
 
     #[OA\Property(
         description: 'Which AutoDJ software (backend) the station uses',
-        example: 'liquidsoap'
+        example: 'stream_engine'
     )]
     public string $backend = '';
 

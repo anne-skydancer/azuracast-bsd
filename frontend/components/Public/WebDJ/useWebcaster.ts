@@ -67,8 +67,8 @@ export const [useProvideWebcaster, useInjectWebcaster] =
 
                 isConnected.value = true;
 
-                // Timeout as Liquidsoap won't return any success/failure message, so the only
-                // way we know if we're still connected is to set a timer.
+                // Timeout as the streaming backend won't return any success/failure message, so the
+                // only way we know if we're still connected is to set a timer.
                 setTimeout(() => {
                     if (isConnected.value) {
                         notifySuccess($gettext("Web DJ connected!"));

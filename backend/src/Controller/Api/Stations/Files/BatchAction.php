@@ -30,8 +30,6 @@ use App\Media\BatchUtilities;
 use App\Message;
 use App\OpenApi;
 use App\Radio\Adapters;
-use App\Radio\Backend\Liquidsoap;
-use App\Radio\Enums\BackendAdapters;
 use App\Radio\Enums\AudioQueues;
 use App\Utilities\File;
 use App\Utilities\Time;
@@ -237,8 +235,6 @@ final class BatchAction implements SingleActionInterface
 
         $this->em->flush();
 
-        $this->batchUtilities->writePlaylistChanges($affectedPlaylistIds);
-
         $this->mediaListCache->clearCache($storageLocation);
 
         return $result;
@@ -321,8 +317,6 @@ final class BatchAction implements SingleActionInterface
             }
         }
 
-        $this->batchUtilities->writePlaylistChanges($affectedPlaylists);
-
         $this->mediaListCache->clearCache($storageLocation);
 
         return $result;
@@ -377,12 +371,10 @@ final class BatchAction implements SingleActionInterface
     ): MediaBatchResult {
         $result = $this->parseRequest($request, $fs, true);
 
-        if (BackendAdapters::Liquidsoap !== $station->backend_type) {
-            throw new RuntimeException('This functionality can only be used on stations that use Liquidsoap.');
-        }
-
-        /** @var Liquidsoap $backend */
         $backend = $this->adapters->getBackendAdapter($station);
+        if (null === $backend) {
+            throw new RuntimeException('This functionality requires an active streaming backend.');
+        }
 
         if ($station->backend_config->use_manual_autodj) {
             foreach ($this->batchUtilities->iterateMedia($storageLocation, $result->files) as $media) {

@@ -34,6 +34,7 @@
     "br33f/php-ga4-mp": "^0.1.5",
     "brick/math": "^0.17",
     "composer/ca-bundle": "^1.5.8",
+    "devium/toml": "^1.1",
     "doctrine/data-fixtures": "^2.2",
     "doctrine/dbal": "^4.3.4",
     "doctrine/migrations": "^3.9.4",

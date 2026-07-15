@@ -43,10 +43,10 @@ export default function useStationsRoutes(): RouteRecordRaw[] {
                     name: "stations:hls_streams:index",
                 },
                 {
-                    path: "ls_config",
+                    path: "engine_config",
                     component: () =>
-                        import("~/components/Stations/LiquidsoapConfig.vue"),
-                    name: "stations:util:ls_config",
+                        import("~/components/Stations/EngineConfig.vue"),
+                    name: "stations:util:engine_config",
                 },
                 {
                     path: "stereo_tool_config",

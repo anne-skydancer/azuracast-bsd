@@ -10,11 +10,9 @@ use App\Entity\Repository\StationPlaylistMediaRepository;
 use App\Entity\Repository\StationPlaylistRepository;
 use App\Http\Response;
 use App\Http\ServerRequest;
-use App\Message\WritePlaylistFileMessage;
 use App\OpenApi;
 use OpenApi\Attributes as OA;
 use Psr\Http\Message\ResponseInterface;
-use Symfony\Component\Messenger\MessageBus;
 
 #[OA\Put(
     path: '/station/{station_id}/playlist/{id}/reshuffle',
@@ -43,7 +41,6 @@ final readonly class ReshuffleAction implements SingleActionInterface
     public function __construct(
         private StationPlaylistRepository $playlistRepo,
         private StationPlaylistMediaRepository $spmRepo,
-        private MessageBus $messageBus,
     ) {
     }
 
@@ -58,12 +55,6 @@ final readonly class ReshuffleAction implements SingleActionInterface
         $record = $this->playlistRepo->requireForStation($id, $request->getStation());
 
         $this->spmRepo->resetQueue($record);
-
-        // Write changes to file.
-        $message = new WritePlaylistFileMessage();
-        $message->playlist_id = $record->id;
-
-        $this->messageBus->dispatch($message);
 
         return $response->withJson(
             new Status(

@@ -51,7 +51,8 @@ final class ListenerAuthAction implements SingleActionInterface
         $station = $request->getStation();
         $listenerIp = Types::string($request->getParam('ip'));
 
-        // RSAS has no "deny-agents" so user-agent bans must be enforced here too.
+        // Enforce user-agent bans centrally here rather than relying on the frontend server's
+        // own mechanism (not every frontend has one).
         $userAgent = Types::stringOrNull($request->getParam('agent'), true);
 
         if ($this->blocklistParser->isAllowed($station, $listenerIp, $userAgent)) {

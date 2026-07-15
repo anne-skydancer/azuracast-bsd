@@ -19,7 +19,7 @@ final class StationFixture extends AbstractFixture
         $station->description = 'A test radio station.';
         $station->enable_requests = true;
         $station->frontend_type = FrontendAdapters::Icecast;
-        $station->backend_type = BackendAdapters::Liquidsoap;
+        $station->backend_type = BackendAdapters::StreamEngine;
         $station->enable_hls = true;
         $station->radio_base_dir = '/var/azuracast/stations/azuratest_radio';
         $station->has_started = true;

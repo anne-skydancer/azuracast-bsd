@@ -22,15 +22,11 @@ use App\Flysystem\StationFilesystems;
 use App\Http\Response;
 use App\Http\ServerRequest;
 use App\Media\MediaProcessor;
-use App\Message\WritePlaylistFileMessage;
 use App\OpenApi;
-use App\Radio\Adapters;
-use App\Radio\Backend\Liquidsoap;
 use InvalidArgumentException;
 use OpenApi\Attributes as OA;
 use Psr\Http\Message\ResponseInterface;
 use Symfony\Component\Filesystem\Filesystem;
-use Symfony\Component\Messenger\MessageBus;
 use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Symfony\Component\Serializer\Serializer;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -156,8 +152,6 @@ final class FilesController extends AbstractStationApiCrudController
     protected string $resourceRouteName = 'api:stations:file';
 
     public function __construct(
-        private readonly Adapters $adapters,
-        private readonly MessageBus $messageBus,
         private readonly CustomFieldRepository $customFieldsRepo,
         private readonly StationMediaRepository $mediaRepo,
         private readonly StationPlaylistMediaRepository $playlistMediaRepo,
@@ -385,23 +379,11 @@ final class FilesController extends AbstractStationApiCrudController
                 }
             }
 
-            $affectedPlaylistIds = $this->playlistMediaRepo->setPlaylistsForMedia(
+            $this->playlistMediaRepo->setPlaylistsForMedia(
                 $record,
                 $station,
                 $playlistsToAssign
             );
-
-            // Handle playlist changes.
-            $backend = $this->adapters->getBackendAdapter($station);
-            if ($backend instanceof Liquidsoap) {
-                foreach ($affectedPlaylistIds as $playlistId => $playlistRow) {
-                    // Instruct the message queue to start a new "write playlist to file" task.
-                    $message = new WritePlaylistFileMessage();
-                    $message->playlist_id = $playlistId;
-
-                    $this->messageBus->dispatch($message);
-                }
-            }
         }
 
         $this->mediaListCache->clearCache($station);
@@ -480,22 +462,7 @@ final class FilesController extends AbstractStationApiCrudController
         }
 
         // Delete the media file off the filesystem.
-        // Write new PLS playlist configuration.
-        foreach ($this->mediaRepo->remove($record, true) as $playlistId => $playlistRecord) {
-            $playlist = $this->em->find(StationPlaylist::class, $playlistId);
-            if (!($playlist instanceof StationPlaylist)) {
-                continue;
-            }
-
-            $backend = $this->adapters->getBackendAdapter($playlist->station);
-            if ($backend instanceof Liquidsoap) {
-                // Instruct the message queue to start a new "write playlist to file" task.
-                $message = new WritePlaylistFileMessage();
-                $message->playlist_id = $playlistId;
-
-                $this->messageBus->dispatch($message);
-            }
-        }
+        $this->mediaRepo->remove($record, true);
 
         $this->mediaListCache->clearCache($request->getStation());
 

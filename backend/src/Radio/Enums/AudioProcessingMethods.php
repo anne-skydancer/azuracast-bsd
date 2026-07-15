@@ -10,8 +10,7 @@ use OpenApi\Attributes as OA;
 enum AudioProcessingMethods: string
 {
     case None = 'none';
-    case Liquidsoap = 'nrj';
-    case MasterMe = 'master_me';
+    case Nrj = 'nrj';
     case StereoTool = 'stereo_tool';
 
     public function getValue(): string

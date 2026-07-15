@@ -953,31 +953,22 @@ return static function (RouteCollectorProxy $group) {
                     )->add(new Middleware\StationSupportsFeature(StationFeatures::Webhooks))
                         ->add(new Middleware\Permissions(StationPermissions::WebHooks, true));
 
-                    // Custom Liquidsoap Configuration
+                    // AzuraCast Engine Configuration
                     $group->group(
-                        '/liquidsoap-config',
+                        '/engine-config',
                         function (RouteCollectorProxy $group) {
                             $group->get(
                                 '',
-                                Controller\Api\Stations\LiquidsoapConfig\GetAction::class
-                            )->setName('api:stations:liquidsoap-config');
+                                Controller\Api\Stations\EngineConfig\GetAction::class
+                            )->setName('api:stations:engine-config');
 
                             $group->put(
                                 '',
-                                Controller\Api\Stations\LiquidsoapConfig\PutAction::class
+                                Controller\Api\Stations\EngineConfig\PutAction::class
                             );
-
-                            $group->get(
-                                '/export',
-                                Controller\Api\Stations\LiquidsoapConfig\ExportAction::class
-                            )->setName('api:stations:liquidsoap-config:export');
-
-                            $group->post(
-                                '/import',
-                                Controller\Api\Stations\LiquidsoapConfig\ImportAction::class
-                            )->setName('api:stations:liquidsoap-config:import');
                         }
-                    )->add(new Middleware\Permissions(StationPermissions::Broadcasting, true));
+                    )->add(new Middleware\StationSupportsFeature(StationFeatures::EngineConfig))
+                        ->add(new Middleware\Permissions(StationPermissions::Broadcasting, true));
 
                     // StereoTool Configuration
                     $group->group(

@@ -8,7 +8,6 @@ use App\Cache\MediaListCache;
 use App\Container\EntityManagerAwareTrait;
 use App\Doctrine\ReadWriteBatchIteratorAggregate;
 use App\Entity\Repository\StationMediaRepository;
-use App\Entity\Repository\StationPlaylistMediaRepository;
 use App\Entity\Repository\StorageLocationRepository;
 use App\Entity\Repository\UnprocessableMediaRepository;
 use App\Entity\StationMedia;
@@ -16,9 +15,7 @@ use App\Entity\StationPlaylistFolder;
 use App\Entity\StorageLocation;
 use App\Entity\UnprocessableMedia;
 use App\Flysystem\ExtendedFilesystemInterface;
-use App\Message\WritePlaylistFileMessage;
 use App\Utilities\File;
-use Symfony\Component\Messenger\MessageBus;
 use Throwable;
 
 final class BatchUtilities
@@ -26,9 +23,7 @@ final class BatchUtilities
     use EntityManagerAwareTrait;
 
     public function __construct(
-        private readonly MessageBus $messageBus,
         private readonly StationMediaRepository $mediaRepo,
-        private readonly StationPlaylistMediaRepository $spmRepo,
         private readonly UnprocessableMediaRepository $unprocessableMediaRepo,
         private readonly StorageLocationRepository $storageLocationRepo,
         private readonly MediaListCache $mediaListCache
@@ -43,15 +38,11 @@ final class BatchUtilities
     ): void {
         $fs ??= $this->storageLocationRepo->getAdapter($storageLocation)->getFilesystem();
 
-        $affectedPlaylists = [];
-
         if ($fs->directoryExists($to)) {
             // Update the paths of all media contained within the directory.
             foreach ($this->iterateMediaInDirectory($storageLocation, $from) as $record) {
                 $record->path = File::renameDirectoryInPath($record->path, $from, $to);
                 $this->em->persist($record);
-
-                $affectedPlaylists += $this->spmRepo->getPlaylistsForMedia($record);
             }
 
             foreach ($this->iterateUnprocessableMediaInDirectory($storageLocation, $from) as $record) {
@@ -62,16 +53,11 @@ final class BatchUtilities
             foreach ($this->iteratePlaylistFoldersInDirectory($storageLocation, $from) as $record) {
                 $record->path = File::renameDirectoryInPath($record->path, $from, $to);
                 $this->em->persist($record);
-
-                $playlist = $record->playlist;
-                $affectedPlaylists[$playlist->id] = $playlist->id;
             }
         } else {
             $record = $this->mediaRepo->findByPath($from, $storageLocation);
 
             if ($record instanceof StationMedia) {
-                $affectedPlaylists += $this->spmRepo->getPlaylistsForMedia($record);
-
                 $record->path = $to;
                 $this->em->persist($record);
                 $this->em->flush();
@@ -86,8 +72,6 @@ final class BatchUtilities
             }
         }
 
-        $this->writePlaylistChanges($affectedPlaylists);
-
         $this->mediaListCache->clearCache($storageLocation);
     }
 
@@ -98,14 +82,13 @@ final class BatchUtilities
         ?ExtendedFilesystemInterface $fs = null
     ): void {
         $fs ??= $this->storageLocationRepo->getAdapter($storageLocation)->getFilesystem();
-        $affectedPlaylists = [];
 
         /*
          * NOTE: This iteration clears the entity manager.
          */
         foreach ($this->iterateMedia($storageLocation, $files) as $media) {
             try {
-                $affectedPlaylists += $this->mediaRepo->remove($media, false, $fs);
+                $this->mediaRepo->remove($media, false, $fs);
             } catch (Throwable) {
             }
         }
@@ -124,8 +107,6 @@ final class BatchUtilities
         }
 
         $this->em->flush();
-
-        $this->writePlaylistChanges($affectedPlaylists);
 
         $this->mediaListCache->clearCache($storageLocation);
     }
@@ -236,21 +217,5 @@ final class BatchUtilities
             ->setParameter('path', $dir . '%');
 
         return ReadWriteBatchIteratorAggregate::fromQuery($query, 25);
-    }
-
-    /**
-     * @param int[] $playlists
-     * @return void
-     */
-    public function writePlaylistChanges(
-        array $playlists
-    ): void {
-        foreach (array_unique($playlists) as $playlistId) {
-            // Instruct the message queue to start a new "write playlist to file" task.
-            $message = new WritePlaylistFileMessage();
-            $message->playlist_id = $playlistId;
-
-            $this->messageBus->dispatch($message);
-        }
     }
 }

@@ -35,7 +35,6 @@
         -->
         <exclude-pattern>src/Entity/StationMedia.php</exclude-pattern>
         <exclude-pattern>src/Notification/Check/UpdateCheck.php</exclude-pattern>
-        <exclude-pattern>src/Radio/Backend/Liquidsoap/ConfigWriter.php</exclude-pattern>
         <exclude-pattern>src/Installer/EnvFiles/*.php</exclude-pattern>
     </rule>
 

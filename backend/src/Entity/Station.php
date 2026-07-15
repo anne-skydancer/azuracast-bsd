@@ -149,8 +149,8 @@ final class Station implements Stringable, IdentifiableEntityInterface
 
     #[
         OA\Property(
-            description: "The backend adapter (liquidsoap,etc)",
-            example: "liquidsoap"
+            description: "The backend adapter (stream_engine, etc)",
+            example: "stream_engine"
         ),
         ORM\Column(type: 'string', length: 100, enumType: BackendAdapters::class),
         Serializer\Groups([EntityGroupsInterface::GROUP_GENERAL, EntityGroupsInterface::GROUP_ALL])

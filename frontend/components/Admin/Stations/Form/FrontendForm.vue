@@ -143,6 +143,55 @@
                 </div>
             </form-fieldset>
 
+            <form-fieldset v-if="isIcecastFrontend">
+                <template #label>
+                    {{ $gettext('Remote Icecast Jail') }}
+                    <span class="badge small text-bg-primary ms-2">
+                        {{ $gettext('Advanced') }}
+                    </span>
+                </template>
+                <template #description>
+                    {{ $gettext('These settings are only needed if Icecast runs in a separate jail or host from this AzuraCast application. Leave all fields blank if Icecast runs alongside this application, which is the default and most common setup.') }}
+                </template>
+
+                <div class="row g-3 mb-3">
+                    <form-group-field
+                        id="edit_form_frontend_host"
+                        class="col-md-6"
+                        :field="r$.frontend_config.host"
+                        :label="$gettext('Remote Host/IP')"
+                        :description="$gettext('Leave blank if Icecast runs alongside this application.')"
+                    />
+
+                    <form-group-field
+                        id="edit_form_frontend_supervisor_port"
+                        class="col-md-6"
+                        :field="r$.frontend_config.supervisor_port"
+                        input-type="number"
+                        :input-attrs="{min: '0'}"
+                        :label="$gettext('Remote Supervisor Port')"
+                        :description="$gettext('The TCP port of the remote supervisord instance. Leave blank to use the default (9002).')"
+                    />
+
+                    <form-group-field
+                        id="edit_form_frontend_supervisor_username"
+                        class="col-md-6"
+                        :field="r$.frontend_config.supervisor_username"
+                        :label="$gettext('Remote Supervisor Username')"
+                        :description="$gettext('Leave blank if not required.')"
+                    />
+
+                    <form-group-field
+                        id="edit_form_frontend_supervisor_password"
+                        class="col-md-6"
+                        :field="r$.frontend_config.supervisor_password"
+                        input-type="password"
+                        :label="$gettext('Remote Supervisor Password')"
+                        :description="$gettext('Leave blank to automatically generate a new password.')"
+                    />
+                </div>
+            </form-fieldset>
+
             <form-fieldset>
                 <template #label>
                     {{ $gettext('Custom Configuration') }}
@@ -238,6 +287,10 @@ const isLocalFrontend = computed(() => {
 
 const isShoutcastFrontend = computed(() => {
     return form.value.frontend_type === FrontendAdapters.Shoutcast;
+});
+
+const isIcecastFrontend = computed(() => {
+    return form.value.frontend_type === FrontendAdapters.Icecast;
 });
 
 const clearCountries = () => {

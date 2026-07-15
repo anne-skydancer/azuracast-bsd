@@ -142,13 +142,6 @@ final class Settings implements Stringable
     }
 
     #[
-        OA\Property(description: "Allow stations to manually edit Liquidsoap code.", example: "true"),
-        ORM\Column,
-        Serializer\Groups(self::GROUP_GENERAL)
-    ]
-    public bool $enable_liquidsoap_editing = true;
-
-    #[
         OA\Property(description: "Allow stations to dispatch webhooks.", example: "true"),
         ORM\Column,
         Serializer\Groups(self::GROUP_GENERAL)

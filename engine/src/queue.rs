@@ -55,29 +55,16 @@ impl TrackQueues {
         }
     }
 
-    /// Pops the next URI to play, respecting SPEC.md C.8's priority order
-    /// (restricted to what's in scope for this task -- no live harbor, no
-    /// remote-URL fallback, no schedule switches): `interrupting_requests`
-    /// (if non-empty) outranks `requests`. Returns `None` if both queues
-    /// are empty, meaning the caller should fall through to AutoDJ.
-    ///
-    /// Phase 4 note: the live-DJ harbor slots in *between* these two
-    /// queues in the real priority order (`interrupting_requests` > live >
-    /// `requests` > AutoDJ -- SPEC.md C.8), which this single combined
-    /// method can't express on its own; `autodj::fetch_next_track` uses
-    /// `pop_interrupting`/`pop_requests` directly (with a live check
-    /// in between) instead of this method for that reason. `pop_next` is
-    /// kept as-is (and still unit-tested below) for any caller that only
-    /// cares about the two request queues' own relative order.
-    pub fn pop_next(&self) -> Option<String> {
-        if let Some(uri) = self.pop_interrupting() {
-            return Some(uri);
-        }
-        self.pop_requests()
-    }
-
     /// Pops the next URI from `interrupting_requests` only (SPEC.md C.8's
     /// highest-priority queue, outranking even the live-DJ harbor).
+    ///
+    /// Phase 4 note: the live-DJ harbor slots in *between* this queue and
+    /// `requests` in the real priority order (`interrupting_requests` >
+    /// live > `requests` > AutoDJ -- SPEC.md C.8), which is why the two
+    /// queues are popped via separate methods (this one and
+    /// `pop_requests`) rather than one combined "pop either" method --
+    /// `autodj::fetch_next_track` calls them individually with a live
+    /// readiness check in between.
     pub fn pop_interrupting(&self) -> Option<String> {
         self.interrupting_requests.lock().unwrap().pop_front()
     }
@@ -94,13 +81,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn interrupting_beats_requests() {
+    fn interrupting_and_requests_are_independent_queues() {
         let q = TrackQueues::new();
         q.push(QUEUE_REQUESTS, "a.mp3".to_string()).unwrap();
         q.push(QUEUE_INTERRUPTING, "b.mp3".to_string()).unwrap();
-        assert_eq!(q.pop_next(), Some("b.mp3".to_string()));
-        assert_eq!(q.pop_next(), Some("a.mp3".to_string()));
-        assert_eq!(q.pop_next(), None);
+        // Each queue is popped independently now (Phase 4 inserts the live
+        // harbor between them -- see `pop_interrupting`'s doc); callers
+        // check `pop_interrupting` first, same net priority as before.
+        assert_eq!(q.pop_interrupting(), Some("b.mp3".to_string()));
+        assert_eq!(q.pop_interrupting(), None);
+        assert_eq!(q.pop_requests(), Some("a.mp3".to_string()));
+        assert_eq!(q.pop_requests(), None);
     }
 
     #[test]

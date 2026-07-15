@@ -11,7 +11,6 @@ use App\Entity\Repository\StationPlaylistMediaRepository;
 use App\Entity\Station;
 use App\Entity\StationPlaylist;
 use App\Exception;
-use App\Radio\Backend\BackendInterface;
 use App\Radio\Enums\BackendAdapters;
 use App\Radio\Enums\FrontendAdapters;
 use RuntimeException;
@@ -194,7 +193,7 @@ final class Configuration
      */
     private function buildAdapterSupervisorConfig(
         Station $station,
-        BackendInterface|Frontend\AbstractFrontend|null $adapter
+        ?AbstractLocalAdapter $adapter
     ): ?string {
         if (null === $adapter || !$adapter->hasCommand($station)) {
             return null;
@@ -258,7 +257,7 @@ final class Configuration
      */
     private function reloadAdapterGroup(
         Station $station,
-        BackendInterface|Frontend\AbstractFrontend $adapter,
+        AbstractLocalAdapter $adapter,
         bool $forceRestart,
         bool $softReloadEligible
     ): void {
@@ -486,7 +485,7 @@ final class Configuration
 
     private function removeAdapterConfiguration(
         Station $station,
-        BackendInterface|Frontend\AbstractFrontend|null $adapter,
+        ?AbstractLocalAdapter $adapter,
         string $category,
         bool $reloadSupervisor
     ): void {

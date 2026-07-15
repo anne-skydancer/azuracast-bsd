@@ -1,0 +1,89 @@
+; freebsd/icecast/supervisord.conf.tmpl
+;
+; TEMPLATE for making an ALREADY-RUNNING Icecast jail remotely manageable by
+; AzuraCast's PHP side. Unlike freebsd/mariadb/ and freebsd/webapp/, this is
+; NOT a single fixed jail's config -- render+install a copy of this once per
+; station's Icecast jail (e.g. `skydancer`, `entanglements`, ...). See
+; README.md in this directory for the full apply procedure.
+;
+; Rendered by render-supervisord-conf.sh (sed-based @@TOKEN@@ substitution,
+; the same mechanism freebsd/mariadb/00-install.sh uses for my.cnf.tmpl,
+; and freebsd/generate-jail-conf.sh uses for jail.conf.d/*.conf.tmpl) into a
+; concrete supervisord.conf. Install the rendered file to:
+;   /usr/local/etc/supervisord.conf
+; on the target Icecast jail.
+;
+; Deliberately NOT included here (out of scope for this template):
+;   - [program:icecast] -- Icecast is already installed/running in this jail
+;     some other way; this scaffold does not install or configure Icecast
+;     itself, only makes its supervisord remotely reachable. The custom
+;     Icecast-KH fork build/install is a separate, still-open, higher-risk
+;     item -- see freebsd/README.md's "Known open items" -- not addressed
+;     here at all.
+;   - Everything freebsd/webapp/supervisord.conf manages (nginx, php-fpm,
+;     centrifugo, sftpgo) -- none of that runs in an Icecast jail.
+;   - Per-station BACKEND program stanzas -- the [include] glob below is
+;     filtered to *.frontend.conf only (see that section's comment), since
+;     Icecast is a frontend-only adapter and this jail should never load a
+;     backend program stanza.
+;   - A [program:*] stanza for Icecast's frontend program itself -- that is
+;     generated dynamically per-station by
+;     Configuration::writeConfiguration() / buildAdapterSupervisorConfig()
+;     into supervisord.frontend.conf, pulled in below via [include], not
+;     hardcoded in this static template.
+
+[unix_http_server]
+; Local socket, kept for the same reason freebsd/webapp/supervisord.conf
+; keeps one: lets an operator run `supervisorctl` directly on this jail for
+; debugging, independent of the [inet_http_server] below.
+file = /var/run/supervisor.sock
+chmod = 0666
+chown = root:wheel
+
+[inet_http_server]
+; THE NEW PART: exposes supervisord's XML-RPC interface over TCP so
+; AzuraCast's PHP side (backend/src/Radio/RemoteSupervisorClientFactory.php)
+; can manage this jail's Icecast process remotely from the webapp jail, via
+; Frontend\Icecast::getSupervisor() -- which builds this exact
+; http://host:port/RPC2 URL from the station's frontend_config.host /
+; frontend_config.supervisor_port / _username / _password fields. Those
+; four fields (set in the AzuraCast admin UI on this station's frontend
+; config) MUST match the values rendered below exactly.
+port = @@ICECAST_JAIL_IP@@:@@ICECAST_SUPERVISOR_PORT@@
+username = @@ICECAST_SUPERVISOR_USERNAME@@
+password = @@ICECAST_SUPERVISOR_PASSWORD@@
+
+[supervisord]
+user = root
+logfile = /var/log/azuracast/supervisord.log
+logfile_maxbytes = 50MB
+logfile_backups = 10
+loglevel = info
+pidfile = /var/run/supervisord.pid
+minfds = 1024
+minprocs = 200
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+[supervisorctl]
+serverurl = unix:///var/run/supervisor.sock
+
+; Pulls in ONLY this station's dynamically-generated frontend program
+; stanza, written by Configuration::writeConfiguration() (see
+; Configuration::getSupervisorConfPath() / Station::getRadioConfigDir()) to
+; <station radio_base_dir>/config/supervisord.frontend.conf -- by default
+; /var/azuracast/stations/<short_name>/config/supervisord.frontend.conf.
+; Filtered to *.frontend.conf only (NOT the *.backend.conf glob
+; freebsd/webapp/supervisord.conf also matches) -- this jail is Icecast-only
+; and must never load a backend program stanza.
+;
+; The wildcard is kept for parity with webapp's glob even though, per this
+; project's one-jail-per-station design, the shared nullfs mount documented
+; in README.md only ever exposes a single station's config directory into
+; this jail -- so in practice this only ever matches that one station.
+; Nothing in this jail runs the PHP app, so nothing writes this file
+; locally; see README.md's "Shared mount" section for how the file gets
+; into this jail's filesystem at all.
+[include]
+files = /var/azuracast/stations/*/config/supervisord.frontend.conf

@@ -18,9 +18,7 @@ body :
       label : "Installation Method"
       description : "How did you install AzuraCast?"
       options :
-        - Docker Installation
         - Ansible Installation
-        - One-Click Installation (Docker)
     validations :
       required : true
   - type : dropdown

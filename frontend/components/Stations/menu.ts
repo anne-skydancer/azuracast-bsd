@@ -323,15 +323,15 @@ export function useStationsMenu() {
                         ) && station.value.features.media,
                 },
                 {
-                    key: "ls_config",
-                    label: $gettext("Edit Liquidsoap Configuration"),
+                    key: "engine_config",
+                    label: $gettext("Edit Engine Configuration"),
                     url: {
-                        name: "stations:util:ls_config",
+                        name: "stations:util:engine_config",
                     },
                     visible: () =>
                         userAllowedForStation(
                             StationPermissions.Broadcasting,
-                        ) && station.value.features.customLiquidsoapConfig,
+                        ) && station.value.features.engineConfig,
                 },
                 {
                     key: "stereo_tool",

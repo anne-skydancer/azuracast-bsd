@@ -54,14 +54,6 @@ export enum RemoteAdapters {
     AzuraRelay = "azurarelay",
 }
 
-export enum MasterMePresets {
-    MusicGeneral = "music_general",
-    SpeechGeneral = "speech_general",
-    EbuR128 = "ebu_r128",
-    ApplePodcasts = "apple_podcasts",
-    YouTube = "youtube",
-}
-
 export enum HlsStreamProfiles {
     AacLowComplexity = "aac",
     AacHighEfficiencyV1 = "aac_he",
@@ -82,14 +74,13 @@ export enum CrossfadeModes {
 }
 
 export enum BackendAdapters {
-    Liquidsoap = "liquidsoap",
+    StreamEngine = "stream_engine",
     None = "none",
 }
 
 export enum AudioProcessingMethods {
     None = "none",
-    Liquidsoap = "nrj",
-    MasterMe = "master_me",
+    Nrj = "nrj",
     StereoTool = "stereo_tool",
 }
 
@@ -925,7 +916,7 @@ export interface ApiNowPlayingStation {
     frontend: string;
     /**
      * Which AutoDJ software (backend) the station uses
-     * @example "liquidsoap"
+     * @example "stream_engine"
      */
     backend: string;
     /**
@@ -1592,7 +1583,7 @@ export interface VueStationFeatures {
     mountPoints: boolean;
     hlsStreams: boolean;
     remoteRelays: boolean;
-    customLiquidsoapConfig: boolean;
+    engineConfig: boolean;
     autoDjQueue: boolean;
 }
 
@@ -1874,11 +1865,6 @@ export interface Settings {
      * @example "*"
      */
     api_access_control?: string | null;
-    /**
-     * Allow stations to manually edit Liquidsoap code.
-     * @example "true"
-     */
-    enable_liquidsoap_editing?: boolean;
     /**
      * Allow stations to dispatch webhooks.
      * @example "true"
@@ -2218,8 +2204,6 @@ export interface StationBackendConfiguration {
     post_processing_include_live?: boolean;
     stereo_tool_license_key?: string | null;
     stereo_tool_configuration_path?: string | null;
-    master_me_preset?: string | null;
-    master_me_loudness_target?: number;
     enable_replaygain_metadata?: boolean;
     crossfade_type?: string;
     /** @format float */
@@ -2248,20 +2232,7 @@ export interface StationBackendConfiguration {
     hls_is_default?: boolean;
     live_broadcast_text?: string;
     enable_auto_cue?: boolean;
-    write_playlists_to_liquidsoap?: boolean;
     share_encoders?: boolean;
-    /** Custom Liquidsoap Configuration: Top Section */
-    custom_config_top?: string | null;
-    /** Custom Liquidsoap Configuration: Pre-Playlists Section */
-    custom_config_pre_playlists?: string | null;
-    /** Custom Liquidsoap Configuration: Pre-Live Section */
-    custom_config_pre_live?: string | null;
-    /** Custom Liquidsoap Configuration: Pre-Fade Section */
-    custom_config_pre_fade?: string | null;
-    /** Custom Liquidsoap Configuration: Pre-Broadcast Section */
-    custom_config?: string | null;
-    /** Custom Liquidsoap Configuration: Post-Broadcast Section */
-    custom_config_bottom?: string | null;
 }
 
 export interface StationBrandingConfiguration {
@@ -2277,6 +2248,10 @@ export interface StationFrontendConfiguration {
     admin_pw?: string;
     relay_pw?: string;
     streamer_pw?: string;
+    host?: string | null;
+    supervisor_port?: number | null;
+    supervisor_username?: string | null;
+    supervisor_password?: string | null;
     port?: number | null;
     max_listeners?: number | null;
     banned_ips?: string | null;
@@ -2388,7 +2363,7 @@ export type StationPlaylist = HasAutoIncrementId & {
     /** @example "stream" */
     remote_type?: PlaylistRemoteTypes | null;
     /**
-     * The total time (in seconds) that Liquidsoap should buffer remote URL streams.
+     * The total time (in seconds) that the streaming backend should buffer remote URL streams.
      * @example 0
      */
     remote_buffer?: number;

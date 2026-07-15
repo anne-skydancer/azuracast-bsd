@@ -3,7 +3,6 @@
 
 # Force LF line ending on shell scripts
 vagrant_* text eol=lf
-Dockerfile text eol=lf
 *.cnf text eol=lf
 *.sh text eol=lf
 *.yml text eol=lf
@@ -18,7 +17,6 @@ Dockerfile text eol=lf
 /.github export-ignore
 /.editorconfig export-ignore
 /tests export-ignore
-/util/docker export-ignore
 /util/openapi.php export-ignore
 /util/phpstan.php export-ignore
 /util/unused.php export-ignore
@@ -27,4 +25,3 @@ Dockerfile text eol=lf
 /*.neon export-ignore
 /*.md export-ignore
 /.travis.yml export-ignore
-/docker.sh export-ignore

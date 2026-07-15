@@ -3,23 +3,27 @@
 //!
 //! ## Contract extracted from SPEC.md D.0
 //!
-//! - Route: `POST /api/internal/{station_id}/liquidsoap/{action}` where
+//! - Route: `POST /api/internal/{station_id}/engine/{action}` where
 //!   `action` is one of `cp`, `auth`, `djon`, `djoff`, `feedback`,
 //!   `nextsong`, `savecache`. (D.0 documents the route as `GET|POST`, but
-//!   the actual Liquidsoap-side caller — `azuracast.api_call`, C.2 — always
-//!   uses `http.post`, so this client always POSTs.)
-//! - Full URL: `{callbacks.base_url}/api/internal/{callbacks.station_id}/liquidsoap/{action}`
-//!   (`callbacks.base_url` plays the role of Liquidsoap's `settings.azuracast.api_url`
-//!   minus the `/api/internal/{station_id}/liquidsoap` suffix, which this
-//!   client appends itself).
-//! - Auth: header `X-Liquidsoap-Api-Key: {callbacks.api_key}`.
-//! - Headers: `Content-Type: application/json`, `User-Agent: Liquidsoap AzuraCast`.
+//!   the historical Liquidsoap-side caller this contract was extracted from
+//!   — `azuracast.api_call`, C.2 — always used `http.post`, so this client
+//!   always POSTs.) Phase 6 renamed this route (and the header/user-agent
+//!   below) from its original `/liquidsoap/{action}` + `X-Liquidsoap-Api-Key`
+//!   naming now that Liquidsoap has been fully removed -- the contract
+//!   itself (payload shapes, timeouts, status handling) is unchanged.
+//! - Full URL: `{callbacks.base_url}/api/internal/{callbacks.station_id}/engine/{action}`
+//!   (`callbacks.base_url` plays the role of Liquidsoap's old
+//!   `settings.azuracast.api_url` minus the `/api/internal/{station_id}/engine`
+//!   suffix, which this client appends itself).
+//! - Auth: header `X-Engine-Api-Key: {callbacks.api_key}`.
+//! - Headers: `Content-Type: application/json`, `User-Agent: AzuraCast Engine`.
 //! - Body: JSON-stringified payload, except `nextsong` which sends a
 //!   literal empty string body (no JSON at all — see D.1).
 //! - Response: HTTP 200 with a JSON body on success. Any non-200 status is
-//!   treated as a hard failure (mirrors `azuracast.api_call`, which folds
-//!   both transport errors and non-200 responses into a single `null`
-//!   result and never inspects the error body).
+//!   treated as a hard failure (mirrors the original `azuracast.api_call`,
+//!   which folded both transport errors and non-200 responses into a single
+//!   `null` result and never inspected the error body).
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -94,24 +98,23 @@ impl CallbackClient {
 
     fn endpoint(&self, action: &str) -> String {
         format!(
-            "{}/api/internal/{}/liquidsoap/{}",
+            "{}/api/internal/{}/engine/{}",
             self.base_url, self.station_id, action
         )
     }
 
-    /// Shared POST primitive mirroring `azuracast.api_call` (C.2): always
-    /// POSTs JSON with the fixed headers, treats non-200 as a failure, and
-    /// returns the raw response body on success (callers parse it
-    /// themselves, matching the Liquidsoap-side pattern of not
-    /// pre-parsing).
+    /// Shared POST primitive mirroring the original `azuracast.api_call`
+    /// (C.2): always POSTs JSON with the fixed headers, treats non-200 as a
+    /// failure, and returns the raw response body on success (callers parse
+    /// it themselves, matching that pattern of not pre-parsing).
     async fn post(&self, action: &str, body: String, timeout: Duration) -> Result<String, String> {
         let url = self.endpoint(action);
         let resp = self
             .http
             .post(&url)
             .header("Content-Type", "application/json")
-            .header("User-Agent", "Liquidsoap AzuraCast")
-            .header("X-Liquidsoap-Api-Key", &self.api_key)
+            .header("User-Agent", "AzuraCast Engine")
+            .header("X-Engine-Api-Key", &self.api_key)
             .timeout(timeout)
             .body(body)
             .send()

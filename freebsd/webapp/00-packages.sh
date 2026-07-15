@@ -5,7 +5,7 @@
 # Base package install + user/directory bootstrap for the `webapp` jail
 # (10.8.0.110 / webapp.amc202d.lan). This jail runs nginx, php-fpm,
 # Valkey, Centrifugo, SFTPGo, cron, and supervisord. It does NOT run
-# MariaDB (separate `mariadb` jail, 10.8.0.100) or Icecast/Liquidsoap
+# MariaDB (separate `mariadb` jail, 10.8.0.100) or Icecast
 # (separate `icecast` jail / out of scope here).
 #
 # Source-of-truth notes (read before running):

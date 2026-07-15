@@ -28,7 +28,7 @@ the one rc.d script that must run standalone at jail boot, documents the
 |---|---|---|---|
 | `mariadb` | value of `MARIADB_JAIL_IP` in `env.conf` (currently `10.8.0.100`) / `::100` | Database only | [`freebsd/mariadb/`](mariadb/README.md) |
 | `webapp` | value of `WEBAPP_JAIL_IP` in `env.conf` (currently `10.8.0.110`) / `::110` | nginx, php-fpm, Valkey, Centrifugo, SFTPGo, cron, supervisord | [`freebsd/webapp/`](webapp/README.md) |
-| `icecast` | (existing) | Audio frontend | Already set up outside this change — see Phase 1's Risk #1 in the project plan re: the custom Icecast-KH fork |
+| `skydancer`, `entanglements`, ... (one per station) | (existing, per-station) | Audio frontend (Icecast) | Icecast itself already set up outside this change per jail — see Phase 1's Risk #1 in the project plan re: the custom Icecast-KH fork, still unaddressed. [`freebsd/icecast/`](icecast/README.md) is a *template* (not a fixed single jail like the two rows above) that makes an already-running Icecast jail's supervisord remotely manageable by AzuraCast's PHP side — it does not install or build Icecast itself. |
 
 `jail.conf.d/mariadb.conf` and `jail.conf.d/webapp.conf` hold the actual
 jail stanzas (generated from the `.tmpl` files by
@@ -96,8 +96,26 @@ checked whether the application-layer configs under `mariadb/` and
   points (a few inferred PHP 8.5 extension package names,
   `audiowaveform` having no FreeBSD port, MariaDB's exact rc.d service
   name).
-- The custom Icecast-KH fork (`ghcr.io/azuracast/icecast-ac`) that the
-  Docker build currently pulls as a prebuilt Linux image is not
-  addressed by this phase at all — it's the highest-risk open item in
-  the whole project (see the plan's Risks section) and needs its own
-  spike.
+- **Resolved by architecture, not by porting it**: the custom Icecast-KH
+  fork (`ghcr.io/azuracast/icecast-ac`) the Docker build used to pull as
+  a prebuilt Linux image was previously this project's highest-risk open
+  item (building/porting a Docker/Linux-only binary to FreeBSD). That
+  risk no longer applies — this fork runs Icecast in externally-managed,
+  per-station FreeBSD jails (see `freebsd/icecast/` below) rather than
+  building/bundling it at all, so there's nothing to port. The Dockerfile
+  stage pulling that image has been removed. Any standard Icecast build
+  (stock `audio/icecast` from ports, or your own) works — AzuraCast no
+  longer assumes or requires the AzuraCast-specific patches.
+- [`freebsd/icecast/`](icecast/README.md) makes an already-Icecast-
+  installed per-station jail (e.g. the existing `skydancer` jail)
+  remotely manageable by AzuraCast's PHP side via a supervisord
+  `[inet_http_server]` TCP listener. It is a template/pattern applied
+  once per station's Icecast jail, not a fixed single-jail config like
+  `mariadb`/`webapp`. **Process ownership**: AzuraCast's generated
+  supervisord config is the canonical way Icecast starts/stops/restarts
+  on that jail once this is applied — do not *also* enable Icecast via
+  the jail's own rc.d (e.g. no `icecast_enable=YES`), or you'll get two
+  independent Icecast processes fighting over the same port. The
+  Icecast *binary* still needs to be installed on that jail some way
+  (`pkg install icecast` or your own build) — this scaffold only wires
+  up remote process management, it doesn't install Icecast itself.

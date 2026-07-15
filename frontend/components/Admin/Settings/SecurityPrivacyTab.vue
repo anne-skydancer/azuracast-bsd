@@ -75,19 +75,6 @@
                 </form-group-field>
 
                 <form-group-checkbox
-                    id="edit_form_enable_liquidsoap_editing"
-                    class="col-md-12"
-                    :field="r$.enable_liquidsoap_editing"
-                    :label="$gettext('Allow Stations to Edit Raw Liquidsoap Configuration')"
-                >
-                    <template #description>
-                        {{
-                            $gettext('Liquidsoap has a complex scripting language that allows users to make calls to other processes or remote URLs. In shared environments, this may represent a security risk for your stations. Disable this setting to prevent all stations from manually editing their Liquidsoap configuration.')
-                        }}
-                    </template>
-                </form-group-checkbox>
-
-                <form-group-checkbox
                     id="edit_form_enable_all_webhooks"
                     class="col-md-12"
                     :field="r$.enable_all_webhooks"

@@ -162,7 +162,7 @@ final class ErrorHandler extends SlimErrorHandler
         // Special handling for cURL requests.
         $ua = $this->request->getHeaderLine('User-Agent');
 
-        if (false !== stripos($ua, 'curl') || false !== stripos($ua, 'Liquidsoap')) {
+        if (false !== stripos($ua, 'curl') || false !== stripos($ua, 'AzuraCast Engine')) {
             $response->getBody()->write(
                 sprintf(
                     'Error: %s on %s L%s',

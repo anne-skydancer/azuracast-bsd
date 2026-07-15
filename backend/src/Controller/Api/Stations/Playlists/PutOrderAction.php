@@ -12,12 +12,10 @@ use App\Entity\Repository\StationPlaylistRepository;
 use App\Exception;
 use App\Http\Response;
 use App\Http\ServerRequest;
-use App\Message\WritePlaylistFileMessage;
 use App\OpenApi;
 use App\Utilities\Types;
 use OpenApi\Attributes as OA;
 use Psr\Http\Message\ResponseInterface;
-use Symfony\Component\Messenger\MessageBus;
 
 #[OA\Put(
     path: '/station/{station_id}/playlist/{id}/order',
@@ -47,7 +45,6 @@ final readonly class PutOrderAction implements SingleActionInterface
     public function __construct(
         private StationPlaylistRepository $playlistRepo,
         private StationPlaylistMediaRepository $spmRepo,
-        private MessageBus $messageBus,
     ) {
     }
 
@@ -71,12 +68,6 @@ final readonly class PutOrderAction implements SingleActionInterface
         $order = Types::array($request->getParam('order'));
 
         $this->spmRepo->setMediaOrder($record, $order);
-
-        // Write changes to file.
-        $message = new WritePlaylistFileMessage();
-        $message->playlist_id = $record->id;
-
-        $this->messageBus->dispatch($message);
 
         return $response->withJson($order);
     }

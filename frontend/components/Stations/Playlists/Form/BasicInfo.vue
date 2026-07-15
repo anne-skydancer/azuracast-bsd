@@ -226,7 +226,7 @@
                         input-type="number"
                         :input-attrs="{ min: 0, max: 120 }"
                         :label="$gettext('Remote Playback Buffer (Seconds)')"
-                        :description="$gettext('The length of playback time that Liquidsoap should buffer when playing this remote playlist. Shorter times may lead to intermittent playback on unstable connections.')"
+                        :description="$gettext('The length of playback time that the streaming backend should buffer when playing this remote playlist. Shorter times may lead to intermittent playback on unstable connections.')"
                     />
                 </div>
             </div>
@@ -298,7 +298,7 @@ const typeOptions = [
         value: "custom",
         text: $gettext("Advanced"),
         description: $gettext(
-            "Manually define how this playlist is used in Liquidsoap configuration.",
+            "Manually define how this playlist is used in the streaming backend configuration.",
         ),
     },
 ];

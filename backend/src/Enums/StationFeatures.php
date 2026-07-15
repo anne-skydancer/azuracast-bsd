@@ -7,10 +7,11 @@ namespace App\Enums;
 use App\Entity\Settings;
 use App\Entity\Station;
 use App\Exception\StationUnsupportedException;
+use App\Radio\Enums\BackendAdapters;
 
 enum StationFeatures
 {
-    case CustomLiquidsoapConfig;
+    case EngineConfig;
     case Media;
     case Sftp;
     case MountPoints;
@@ -30,7 +31,10 @@ enum StationFeatures
 
         return match ($this) {
             self::Media => $backendEnabled,
-            self::CustomLiquidsoapConfig => $backendEnabled && $settings->enable_liquidsoap_editing,
+            // The structured TOML editor is StreamEngine-only. It can't inject arbitrary code --
+            // it only round-trips already-editable structured fields -- so it doesn't need to be
+            // gated behind an `enable_*_editing`-style global toggle.
+            self::EngineConfig => $backendEnabled && BackendAdapters::StreamEngine === $station->backend_type,
             self::Streamers => $backendEnabled && $station->enable_streamers,
             self::Sftp => $backendEnabled && $station->media_storage_location->adapter->isLocal(),
             self::MountPoints => $station->frontend_type->supportsMounts(),

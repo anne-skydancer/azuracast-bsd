@@ -1,6 +1,18 @@
 # AzuraCast Liquidsoap Integration — Behavioral Specification
 
-Extracted by reading (not running) the following source files in the `azuracast-bsd` repository:
+> **Historical reference, post-cutover.** This document was the Phase 0 spec
+> extracted from Liquidsoap's actual behavior and is what the Rust engine
+> (`engine/`) was built to satisfy. As of Phase 6, Liquidsoap and all its PHP
+> source files have been deleted from this repository -- every file path
+> below refers to code that no longer exists. Kept as the design record for
+> *why* the engine behaves the way it does. One concrete drift to note: the
+> reverse-callback route/header documented in section D.0 as
+> `/liquidsoap/{action}` + `X-Liquidsoap-Api-Key` was renamed in Phase 6 to
+> `/engine/{action}` + `X-Engine-Api-Key` (see `engine/src/callbacks.rs`) --
+> the contract's actual behavior (payloads, timeouts, status handling) is
+> otherwise unchanged from what's documented here.
+
+Extracted by reading (not running) the following source files in the `azuracast-bsd` repository (paths as they existed pre-cutover):
 
 - `backend/src/Radio/Backend/Liquidsoap/ConfigWriter.php`
 - `util/docker/stations/liquidsoap/azuracast.liq`, `crossfade.liq`, `utilities.liq`

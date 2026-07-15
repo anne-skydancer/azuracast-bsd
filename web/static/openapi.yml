@@ -1212,67 +1212,6 @@ paths:
           $ref: '#/components/responses/AccessDenied'
         '500':
           $ref: '#/components/responses/GenericError'
-  '/admin/station/{id}/clone':
-    post:
-      tags:
-        - 'Administration: Stations'
-      summary: 'Clone a station, preserving certain settings.'
-      operationId: postAdminStationsClone
-      parameters:
-        -
-          name: id
-          in: path
-          description: 'Station ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              properties:
-                name:
-                  description: 'The name of the newly cloned station.'
-                  type: string
-                description:
-                  description: 'The description of the newly cloned station.'
-                  type: string
-                clone:
-                  description: 'Which parts of the original station to clone.'
-                  type: array
-                  items: { type: string, enum: [media_storage, recordings_storage, podcasts_storage, playlists, mounts, remotes, streamers, permissions, webhooks] }
-              type: object
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  /admin/stations/storage-locations:
-    get:
-      tags:
-        - 'Administration: Stations'
-      summary: 'List storage locations available for assignment to a station.'
-      operationId: getAdminStationStorageLocations
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties:
-                  $ref: '#/components/schemas/Api_Form_SimpleOptions'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
   /admin/stations:
     get:
       tags:
@@ -1386,6 +1325,67 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  '/admin/station/{id}/clone':
+    post:
+      tags:
+        - 'Administration: Stations'
+      summary: 'Clone a station, preserving certain settings.'
+      operationId: postAdminStationsClone
+      parameters:
+        -
+          name: id
+          in: path
+          description: 'Station ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                name:
+                  description: 'The name of the newly cloned station.'
+                  type: string
+                description:
+                  description: 'The description of the newly cloned station.'
+                  type: string
+                clone:
+                  description: 'Which parts of the original station to clone.'
+                  type: array
+                  items: { type: string, enum: [media_storage, recordings_storage, podcasts_storage, playlists, mounts, remotes, streamers, permissions, webhooks] }
+              type: object
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  /admin/stations/storage-locations:
+    get:
+      tags:
+        - 'Administration: Stations'
+      summary: 'List storage locations available for assignment to a station.'
+      operationId: getAdminStationStorageLocations
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: '#/components/schemas/Api_Form_SimpleOptions'
         '403':
           $ref: '#/components/responses/AccessDenied'
         '404':
@@ -2402,6 +2402,41 @@ paths:
           $ref: '#/components/responses/RecordNotFound'
         '500':
           $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/engine-config':
+    get:
+      tags:
+        - 'Stations: Broadcasting'
+      summary: 'Get the current generated AzuraCast Engine configuration (TOML) for the station.'
+      operationId: getStationEngineConfig
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+    put:
+      tags:
+        - 'Stations: Broadcasting'
+      summary: 'Validate and save the AzuraCast Engine configuration (TOML) for the station.'
+      operationId: putStationEngineConfig
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
   '/station/{station_id}/fallback':
     get:
       tags:
@@ -2451,6 +2486,137 @@ paths:
       parameters:
         -
           $ref: '#/components/parameters/StationIdRequired'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/files':
+    get:
+      tags:
+        - 'Stations: Media'
+      summary: 'List all current uploaded files.'
+      operationId: getFiles
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Api_StationMedia'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '500':
+          $ref: '#/components/responses/GenericError'
+    post:
+      tags:
+        - 'Stations: Media'
+      summary: 'Upload a new file.'
+      operationId: addFile
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Api_UploadFile'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Api_StationMedia'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/file/{id}':
+    get:
+      tags:
+        - 'Stations: Media'
+      summary: 'Retrieve details for a single file.'
+      operationId: getFile
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: media_id
+          in: path
+          description: 'Media ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Api_StationMedia'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+    put:
+      tags:
+        - 'Stations: Media'
+      summary: 'Update details of a single file.'
+      operationId: editFile
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: media_id
+          in: path
+          description: 'Media ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Api_StationMedia'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+    delete:
+      tags:
+        - 'Stations: Media'
+      summary: 'Delete a single file.'
+      operationId: deleteFile
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: media_id
+          in: path
+          description: 'Media ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
       responses:
         '200':
           $ref: '#/components/responses/Success'
@@ -2662,137 +2828,6 @@ paths:
       parameters:
         -
           $ref: '#/components/parameters/StationIdRequired'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/files':
-    get:
-      tags:
-        - 'Stations: Media'
-      summary: 'List all current uploaded files.'
-      operationId: getFiles
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Api_StationMedia'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    post:
-      tags:
-        - 'Stations: Media'
-      summary: 'Upload a new file.'
-      operationId: addFile
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Api_UploadFile'
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Api_StationMedia'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/file/{id}':
-    get:
-      tags:
-        - 'Stations: Media'
-      summary: 'Retrieve details for a single file.'
-      operationId: getFile
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: media_id
-          in: path
-          description: 'Media ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Api_StationMedia'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    put:
-      tags:
-        - 'Stations: Media'
-      summary: 'Update details of a single file.'
-      operationId: editFile
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: media_id
-          in: path
-          description: 'Media ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Api_StationMedia'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    delete:
-      tags:
-        - 'Stations: Media'
-      summary: 'Delete a single file.'
-      operationId: deleteFile
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: media_id
-          in: path
-          description: 'Media ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
       responses:
         '200':
           $ref: '#/components/responses/Success'
@@ -3053,77 +3088,6 @@ paths:
         '404':
           $ref: '#/components/responses/RecordNotFound'
       security: []
-  '/station/{station_id}/liquidsoap-config/export':
-    get:
-      tags:
-        - 'Stations: Broadcasting'
-      summary: 'Generate an archive of all Liquidsoap configuration on your station, including custom config.'
-      operationId: exportStationLiquidsoapConfig
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/liquidsoap-config':
-    get:
-      tags:
-        - 'Stations: Broadcasting'
-      summary: 'Get the generated and editable sections of the station Liquidsoap configuration.'
-      operationId: getStationLiquidsoapConfig
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    put:
-      tags:
-        - 'Stations: Broadcasting'
-      summary: 'Save the editable sections of the station Liquidsoap configuration.'
-      operationId: putStationLiquidsoapConfig
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/liquidsoap-config/import':
-    post:
-      tags:
-        - 'Stations: Broadcasting'
-      summary: 'Import a previously exported Liquidsoap configuration archive and replace custom config sections.'
-      operationId: importStationLiquidsoapConfig
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
   '/station/{station_id}/listeners':
     get:
       tags:
@@ -3197,84 +3161,6 @@ paths:
                 $ref: '#/components/schemas/Api_LogContents'
         '403':
           $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/mount/{id}/intro':
-    get:
-      tags:
-        - 'Stations: Mount Points'
-      summary: 'Get the intro track for a mount point.'
-      operationId: getMountIntro
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Mount Point ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          $ref: '#/components/responses/SuccessWithDownload'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    post:
-      tags:
-        - 'Stations: Mount Points'
-      summary: 'Update the intro track for a mount point.'
-      operationId: postMountIntro
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Mount Point ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      requestBody:
-        $ref: '#/components/requestBodies/FlowFileUpload'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    delete:
-      tags:
-        - 'Stations: Mount Points'
-      summary: 'Removes the intro track for a mount point.'
-      operationId: deleteMountIntro
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Mount Point ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
         '500':
           $ref: '#/components/responses/GenericError'
   '/station/{station_id}/mounts':
@@ -3408,6 +3294,84 @@ paths:
           $ref: '#/components/responses/RecordNotFound'
         '500':
           $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/mount/{id}/intro':
+    get:
+      tags:
+        - 'Stations: Mount Points'
+      summary: 'Get the intro track for a mount point.'
+      operationId: getMountIntro
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Mount Point ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessWithDownload'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+    post:
+      tags:
+        - 'Stations: Mount Points'
+      summary: 'Update the intro track for a mount point.'
+      operationId: postMountIntro
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Mount Point ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        $ref: '#/components/requestBodies/FlowFileUpload'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+    delete:
+      tags:
+        - 'Stations: Mount Points'
+      summary: 'Removes the intro track for a mount point.'
+      operationId: deleteMountIntro
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Mount Point ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
   '/station/{station_id}/ondemand/download/{media_id}':
     get:
       tags:
@@ -3455,6 +3419,137 @@ paths:
         '500':
           $ref: '#/components/responses/GenericError'
       security: []
+  '/station/{station_id}/playlists':
+    get:
+      tags:
+        - 'Stations: Playlists'
+      summary: 'List all current playlists.'
+      operationId: getPlaylists
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StationPlaylist'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '500':
+          $ref: '#/components/responses/GenericError'
+    post:
+      tags:
+        - 'Stations: Playlists'
+      summary: 'Create a new playlist.'
+      operationId: addPlaylist
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StationPlaylist'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StationPlaylist'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/playlist/{id}':
+    get:
+      tags:
+        - 'Stations: Playlists'
+      summary: 'Retrieve details for a single playlist.'
+      operationId: getPlaylist
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Playlist ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StationPlaylist'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+    put:
+      tags:
+        - 'Stations: Playlists'
+      summary: 'Update details of a single playlist.'
+      operationId: editPlaylist
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Playlist ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StationPlaylist'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+    delete:
+      tags:
+        - 'Stations: Playlists'
+      summary: 'Delete a single playlist.'
+      operationId: deletePlaylist
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Playlist ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
   '/station/{station_id}/playlist/{id}/clone':
     post:
       tags:
@@ -3794,137 +3889,6 @@ paths:
           $ref: '#/components/responses/RecordNotFound'
         '500':
           $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/playlists':
-    get:
-      tags:
-        - 'Stations: Playlists'
-      summary: 'List all current playlists.'
-      operationId: getPlaylists
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/StationPlaylist'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    post:
-      tags:
-        - 'Stations: Playlists'
-      summary: 'Create a new playlist.'
-      operationId: addPlaylist
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/StationPlaylist'
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StationPlaylist'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/playlist/{id}':
-    get:
-      tags:
-        - 'Stations: Playlists'
-      summary: 'Retrieve details for a single playlist.'
-      operationId: getPlaylist
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Playlist ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StationPlaylist'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    put:
-      tags:
-        - 'Stations: Playlists'
-      summary: 'Update details of a single playlist.'
-      operationId: editPlaylist
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Playlist ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/StationPlaylist'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    delete:
-      tags:
-        - 'Stations: Playlists'
-      summary: 'Delete a single playlist.'
-      operationId: deletePlaylist
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Playlist ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
   '/station/{station_id}/podcast/{podcast_id}/episodes':
     get:
       tags:
@@ -4080,6 +4044,138 @@ paths:
           name: id
           in: path
           description: 'Podcast Episode ID'
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/podcasts':
+    get:
+      tags:
+        - 'Stations: Podcasts'
+      summary: 'List all current podcasts.'
+      operationId: getPodcasts
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Api_Podcast'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+    post:
+      tags:
+        - 'Stations: Podcasts'
+      summary: 'Create a new podcast.'
+      operationId: addPodcast
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Api_Podcast'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Api_Podcast'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/podcast/{id}':
+    get:
+      tags:
+        - 'Stations: Podcasts'
+      summary: 'Retrieve details for a single podcast.'
+      operationId: getPodcast
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Podcast ID'
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Api_Podcast'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+    put:
+      tags:
+        - 'Stations: Podcasts'
+      summary: 'Update details of a single podcast.'
+      operationId: editPodcast
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Podcast ID'
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Api_Podcast'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+    delete:
+      tags:
+        - 'Stations: Podcasts'
+      summary: 'Delete a single podcast.'
+      operationId: deletePodcast
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Podcast ID'
           required: true
           schema:
             type: string
@@ -4570,138 +4666,6 @@ paths:
           $ref: '#/components/responses/RecordNotFound'
         '500':
           $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/podcasts':
-    get:
-      tags:
-        - 'Stations: Podcasts'
-      summary: 'List all current podcasts.'
-      operationId: getPodcasts
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Api_Podcast'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    post:
-      tags:
-        - 'Stations: Podcasts'
-      summary: 'Create a new podcast.'
-      operationId: addPodcast
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Api_Podcast'
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Api_Podcast'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/podcast/{id}':
-    get:
-      tags:
-        - 'Stations: Podcasts'
-      summary: 'Retrieve details for a single podcast.'
-      operationId: getPodcast
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Podcast ID'
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Api_Podcast'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    put:
-      tags:
-        - 'Stations: Podcasts'
-      summary: 'Update details of a single podcast.'
-      operationId: editPodcast
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Podcast ID'
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Api_Podcast'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    delete:
-      tags:
-        - 'Stations: Podcasts'
-      summary: 'Delete a single podcast.'
-      operationId: deletePodcast
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Podcast ID'
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
   '/station/{station_id}/profile':
     get:
       tags:
@@ -4729,7 +4693,7 @@ paths:
       tags:
         - 'Stations: General'
       summary: 'Get the editable profile for the current station.'
-      description: "This controller handles the specific \"Edit Profile\" function on a station's profile, which has different permissions\nand possible actions than the Admin Station Edit function."
+      description: "This controller handles the specific \"Edit Profile\" function on a station's profile, which has different permissions\r\nand possible actions than the Admin Station Edit function."
       operationId: getStationProfileEdit
       parameters:
         -
@@ -5370,7 +5334,7 @@ paths:
     post:
       tags:
         - 'Stations: Broadcasting'
-      summary: 'Perform service control actions on the radio backend (Liquidsoap)'
+      summary: 'Perform service control actions on the radio backend'
       operationId: doBackendServiceAction
       parameters:
         -
@@ -5592,260 +5556,6 @@ paths:
           $ref: '#/components/responses/RecordNotFound'
         '500':
           $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/streamer/{id}/art':
-    get:
-      tags:
-        - 'Public: Stations'
-      summary: 'Gets the default album art for a streamer.'
-      operationId: getStreamerArt
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Streamer ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          $ref: '#/components/responses/SuccessWithImage'
-        '302':
-          description: 'A temporary redirect to the correct resource.'
-          headers:
-            location:
-              description: 'The current URL of the resource.'
-              schema:
-                type: string
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-      security: []
-    post:
-      tags:
-        - 'Stations: Streamers/DJs'
-      summary: 'Sets the default album art for a streamer.'
-      operationId: postStreamerArt
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Streamer ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      requestBody:
-        $ref: '#/components/requestBodies/FlowFileUpload'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    delete:
-      tags:
-        - 'Stations: Streamers/DJs'
-      summary: 'Removes the default album art for a streamer.'
-      operationId: deleteStreamerArt
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Streamer ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/streamer/{id}/broadcasts/batch':
-    post:
-      tags:
-        - 'Stations: Streamers/DJs'
-      summary: 'Perform batch actions on the specified broadcasts.'
-      operationId: postStationStreamerBroadcastsBatch
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Streamer ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              properties:
-                do:
-                  description: 'The action to take with the specified rows.'
-                  type: string
-                  enum: [delete]
-                rows:
-                  description: 'The IDs to perform batch actions on.'
-                  type: array
-                  items: { type: integer, format: int64 }
-              type: object
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Api_GenericBatchResult'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/streamers/broadcasts':
-    get:
-      tags:
-        - 'Stations: Streamers/DJs'
-      summary: 'List all broadcasts associated with the station.'
-      operationId: getStationAllBroadcasts
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Api_StationStreamerBroadcast'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/streamer/{id}/broadcasts':
-    get:
-      tags:
-        - 'Stations: Streamers/DJs'
-      summary: 'List all broadcasts associated with the specified streamer.'
-      operationId: getStationStreamerBroadcasts
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Streamer ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Api_StationStreamerBroadcast'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/streamer/{id}/broadcast/{broadcast_id}/download':
-    get:
-      tags:
-        - 'Stations: Streamers/DJs'
-      summary: 'Download a single broadcast from a streamer.'
-      operationId: getStationStreamerDownloadBroadcast
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Streamer ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-        -
-          name: broadcast_id
-          in: path
-          description: 'Broadcast ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          $ref: '#/components/responses/SuccessWithDownload'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/streamer/{id}/broadcast/{broadcast_id}':
-    delete:
-      tags:
-        - 'Stations: Streamers/DJs'
-      summary: 'Remove a single broadcast from a streamer.'
-      operationId: getStationStreamerDeleteBroadcast
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Streamer ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-        -
-          name: broadcast_id
-          in: path
-          description: 'Broadcast ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
   '/station/{station_id}/streamers':
     get:
       tags:
@@ -5981,6 +5691,260 @@ paths:
           $ref: '#/components/responses/RecordNotFound'
         '500':
           $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/streamer/{id}/art':
+    get:
+      tags:
+        - 'Public: Stations'
+      summary: 'Gets the default album art for a streamer.'
+      operationId: getStreamerArt
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Streamer ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessWithImage'
+        '302':
+          description: 'A temporary redirect to the correct resource.'
+          headers:
+            location:
+              description: 'The current URL of the resource.'
+              schema:
+                type: string
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+      security: []
+    post:
+      tags:
+        - 'Stations: Streamers/DJs'
+      summary: 'Sets the default album art for a streamer.'
+      operationId: postStreamerArt
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Streamer ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        $ref: '#/components/requestBodies/FlowFileUpload'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+    delete:
+      tags:
+        - 'Stations: Streamers/DJs'
+      summary: 'Removes the default album art for a streamer.'
+      operationId: deleteStreamerArt
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Streamer ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/streamers/broadcasts':
+    get:
+      tags:
+        - 'Stations: Streamers/DJs'
+      summary: 'List all broadcasts associated with the station.'
+      operationId: getStationAllBroadcasts
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Api_StationStreamerBroadcast'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/streamer/{id}/broadcasts':
+    get:
+      tags:
+        - 'Stations: Streamers/DJs'
+      summary: 'List all broadcasts associated with the specified streamer.'
+      operationId: getStationStreamerBroadcasts
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Streamer ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Api_StationStreamerBroadcast'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/streamer/{id}/broadcast/{broadcast_id}/download':
+    get:
+      tags:
+        - 'Stations: Streamers/DJs'
+      summary: 'Download a single broadcast from a streamer.'
+      operationId: getStationStreamerDownloadBroadcast
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Streamer ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+        -
+          name: broadcast_id
+          in: path
+          description: 'Broadcast ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessWithDownload'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/streamer/{id}/broadcast/{broadcast_id}':
+    delete:
+      tags:
+        - 'Stations: Streamers/DJs'
+      summary: 'Remove a single broadcast from a streamer.'
+      operationId: getStationStreamerDeleteBroadcast
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Streamer ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+        -
+          name: broadcast_id
+          in: path
+          description: 'Broadcast ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/streamer/{id}/broadcasts/batch':
+    post:
+      tags:
+        - 'Stations: Streamers/DJs'
+      summary: 'Perform batch actions on the specified broadcasts.'
+      operationId: postStationStreamerBroadcastsBatch
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Streamer ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                do:
+                  description: 'The action to take with the specified rows.'
+                  type: string
+                  enum: [delete]
+                rows:
+                  description: 'The IDs to perform batch actions on.'
+                  type: array
+                  items: { type: integer, format: int64 }
+              type: object
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Api_GenericBatchResult'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
   '/station/{station_id}/nowplaying/update':
     post:
       tags:
@@ -6037,97 +6001,6 @@ paths:
           name: id
           in: path
           description: 'Media ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/webhook/{id}/test':
-    put:
-      tags:
-        - 'Stations: Web Hooks'
-      summary: 'Send a test dispatch of a webhook with the current Now Playing data for the station.'
-      operationId: putStationWebhookTest
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Web Hook ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Api_TaskWithLog'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '404':
-          $ref: '#/components/responses/RecordNotFound'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/webhooks/{id}/test-log/{path}':
-    get:
-      tags:
-        - 'Stations: Web Hooks'
-      summary: 'View a specific webhook test dispatch log contents.'
-      operationId: getWebhookTestLog
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Web Hook ID'
-          required: true
-          schema:
-            type: integer
-            format: int64
-        -
-          name: path
-          in: path
-          description: 'Log path as returned by the Test action.'
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Api_LogContents'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  '/station/{station_id}/webhook/{id}/toggle':
-    put:
-      tags:
-        - 'Stations: Web Hooks'
-      summary: 'Toggle the enabled/disabled status of a webhook.'
-      operationId: putStationWebhookToggle
-      parameters:
-        -
-          $ref: '#/components/parameters/StationIdRequired'
-        -
-          name: id
-          in: path
-          description: 'Web Hook ID'
           required: true
           schema:
             type: integer
@@ -6306,8 +6179,111 @@ paths:
           $ref: '#/components/responses/RecordNotFound'
         '500':
           $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/webhook/{id}/test':
+    put:
+      tags:
+        - 'Stations: Web Hooks'
+      summary: 'Send a test dispatch of a webhook with the current Now Playing data for the station.'
+      operationId: putStationWebhookTest
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Web Hook ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Api_TaskWithLog'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/webhooks/{id}/test-log/{path}':
+    get:
+      tags:
+        - 'Stations: Web Hooks'
+      summary: 'View a specific webhook test dispatch log contents.'
+      operationId: getWebhookTestLog
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Web Hook ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+        -
+          name: path
+          in: path
+          description: 'Log path as returned by the Test action.'
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Api_LogContents'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '500':
+          $ref: '#/components/responses/GenericError'
+  '/station/{station_id}/webhook/{id}/toggle':
+    put:
+      tags:
+        - 'Stations: Web Hooks'
+      summary: 'Toggle the enabled/disabled status of a webhook.'
+      operationId: putStationWebhookToggle
+      parameters:
+        -
+          $ref: '#/components/parameters/StationIdRequired'
+        -
+          name: id
+          in: path
+          description: 'Web Hook ID'
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/AccessDenied'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/GenericError'
 components:
   schemas:
+    ApiKey:
+      type: object
+      allOf:
+        -
+          $ref: '#/components/schemas/HasSplitTokenFields'
+        -
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+            comment:
+              type: string
+          type: object
     Api_Account_ChangePassword:
       required:
         - current_password
@@ -7637,7 +7613,7 @@ components:
         backend:
           description: 'Which AutoDJ software (backend) the station uses'
           type: string
-          example: liquidsoap
+          example: stream_engine
         timezone:
           description: "The station's IANA time zone"
           type: string
@@ -8675,7 +8651,7 @@ components:
         - mountPoints
         - hlsStreams
         - remoteRelays
-        - customLiquidsoapConfig
+        - engineConfig
         - autoDjQueue
       properties:
         media:
@@ -8696,7 +8672,7 @@ components:
           type: boolean
         remoteRelays:
           type: boolean
-        customLiquidsoapConfig:
+        engineConfig:
           type: boolean
         autoDjQueue:
           type: boolean
@@ -8880,18 +8856,6 @@ components:
           example: '.radio-player-widget { border-radius: 12px; }'
           nullable: true
       type: object
-    ApiKey:
-      type: object
-      allOf:
-        -
-          $ref: '#/components/schemas/HasSplitTokenFields'
-        -
-          properties:
-            user:
-              $ref: '#/components/schemas/User'
-            comment:
-              type: string
-          type: object
     AuditLog:
       required:
         - timestamp
@@ -9216,10 +9180,6 @@ components:
           type: string
           example: '*'
           nullable: true
-        enable_liquidsoap_editing:
-          description: 'Allow stations to manually edit Liquidsoap code.'
-          type: boolean
-          example: 'true'
         enable_all_webhooks:
           description: 'Allow stations to dispatch webhooks.'
           type: boolean
@@ -9586,11 +9546,6 @@ components:
         stereo_tool_configuration_path:
           type: string
           nullable: true
-        master_me_preset:
-          type: string
-          nullable: true
-        master_me_loudness_target:
-          type: integer
         enable_replaygain_metadata:
           type: boolean
         crossfade_type:
@@ -9628,34 +9583,8 @@ components:
           type: string
         enable_auto_cue:
           type: boolean
-        write_playlists_to_liquidsoap:
-          type: boolean
         share_encoders:
           type: boolean
-        custom_config_top:
-          description: 'Custom Liquidsoap Configuration: Top Section'
-          type: string
-          nullable: true
-        custom_config_pre_playlists:
-          description: 'Custom Liquidsoap Configuration: Pre-Playlists Section'
-          type: string
-          nullable: true
-        custom_config_pre_live:
-          description: 'Custom Liquidsoap Configuration: Pre-Live Section'
-          type: string
-          nullable: true
-        custom_config_pre_fade:
-          description: 'Custom Liquidsoap Configuration: Pre-Fade Section'
-          type: string
-          nullable: true
-        custom_config:
-          description: 'Custom Liquidsoap Configuration: Pre-Broadcast Section'
-          type: string
-          nullable: true
-        custom_config_bottom:
-          description: 'Custom Liquidsoap Configuration: Post-Broadcast Section'
-          type: string
-          nullable: true
       type: object
     StationBrandingConfiguration:
       properties:
@@ -9685,6 +9614,20 @@ components:
           type: string
         streamer_pw:
           type: string
+        host:
+          description: "The remote host/address where this station's Icecast process (and its supervisord\r\ninstance) runs, if it is not co-located with the PHP application in the same jail/host.\r\n\r\nNull (the default) means \"co-located with PHP\" — the existing local Unix-socket\r\nsupervisor and local `getLocalUri()` polling behavior is used, unchanged."
+          type: string
+          nullable: true
+        supervisor_port:
+          description: "The TCP port of the remote supervisord's `inet_http_server`, when `$host` is set.\r\n\r\nDefaults to 9002 when unset; consumers should read this via `$supervisor_port ?? 9002`\r\nrather than relying on a stored default, since this field is meaningless (and left null)\r\nfor co-located stations."
+          type: integer
+          nullable: true
+        supervisor_username:
+          type: string
+          nullable: true
+        supervisor_password:
+          type: string
+          nullable: true
         port:
           type: integer
           nullable: true
@@ -9869,7 +9812,7 @@ components:
               nullable: true
               example: stream
             remote_buffer:
-              description: 'The total time (in seconds) that Liquidsoap should buffer remote URL streams.'
+              description: 'The total time (in seconds) that the streaming engine should buffer remote URL streams.'
               type: integer
               example: 0
             is_enabled:
@@ -10428,20 +10371,18 @@ components:
       enum:
         - none
         - nrj
-        - master_me
         - stereo_tool
       x-enumNames:
         - None
-        - Liquidsoap
-        - MasterMe
+        - Nrj
         - StereoTool
     BackendAdapters:
       type: string
       enum:
-        - liquidsoap
+        - stream_engine
         - none
       x-enumNames:
-        - Liquidsoap
+        - StreamEngine
         - None
     CrossfadeModes:
       type: string
@@ -10475,20 +10416,6 @@ components:
         - AacLowComplexity
         - AacHighEfficiencyV1
         - AacHighEfficiencyV2
-    MasterMePresets:
-      type: string
-      enum:
-        - music_general
-        - speech_general
-        - ebu_r128
-        - apple_podcasts
-        - youtube
-      x-enumNames:
-        - MusicGeneral
-        - SpeechGeneral
-        - EbuR128
-        - ApplePodcasts
-        - YouTube
     RemoteAdapters:
       type: string
       enum:

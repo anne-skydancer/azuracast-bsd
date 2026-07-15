@@ -10,7 +10,6 @@ use App\Entity\StationQueue;
 use App\Entity\StationRequest;
 use App\Event\Radio\AnnotateNextSong;
 use App\Radio\Adapters;
-use App\Radio\Backend\Liquidsoap;
 use App\Radio\Enums\AudioQueues;
 use App\Utilities\Time;
 use Psr\EventDispatcher\EventDispatcherInterface;
@@ -55,7 +54,7 @@ final class CheckRequestsTask extends AbstractTask
         // Send request to the station to play the request.
         $backend = $this->adapters->getBackendAdapter($station);
 
-        if (!($backend instanceof Liquidsoap)) {
+        if (null === $backend) {
             return;
         }
 
@@ -77,17 +76,17 @@ final class CheckRequestsTask extends AbstractTask
             $this->em->flush();
         }
 
-        // Generate full Liquidsoap annotations
+        // Generate full AutoDJ annotations
         $event = AnnotateNextSong::fromStationQueue($sq, true);
         $this->dispatcher->dispatch($event);
 
         $track = $event->buildAnnotations();
 
-        // Queue request with Liquidsoap.
+        // Queue request with AutoDJ.
         $queue = AudioQueues::Requests;
 
         if (!$backend->isQueueEmpty($station, $queue)) {
-            $this->logger->error('Skipping submitting request to Liquidsoap; current queue is occupied.');
+            $this->logger->error('Skipping submitting request; current queue is occupied.');
             return;
         }
 

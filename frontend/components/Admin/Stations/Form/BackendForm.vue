@@ -136,7 +136,7 @@
                         stacked
                         radio
                         :label="$gettext('Audio Post-processing Method')"
-                        :description="$gettext('Select an option here to apply post-processing using an easy preset or tool. You can also manually apply post-processing by editing your Liquidsoap configuration manually.')"
+                        :description="$gettext('Select an option here to apply post-processing using an easy preset or tool.')"
                         high-cpu
                     />
 
@@ -150,51 +150,6 @@
                         />
                     </template>
                 </div>
-
-                <template v-if="isMasterMeEnabled">
-                    <form-markup id="master_me_info">
-                        <template #label>
-                            {{ $gettext('About Master_me') }}
-                        </template>
-
-                        <p class="card-text">
-                            {{
-                                $gettext('Master_me is an open-source automatic mastering plugin for streaming, podcasts and Internet radio.')
-                            }}
-                        </p>
-                        <p class="card-text">
-                            <a
-                                href="https://github.com/trummerschlunk/master_me"
-                                target="_blank"
-                            >
-                                {{ $gettext('Master_me Project Homepage') }}
-                            </a>
-                        </p>
-                    </form-markup>
-
-                    <div class="row g-3">
-                        <form-group-multi-check
-                            id="edit_form_backend_master_me_preset"
-                            class="col-md-6"
-                            :field="r$.backend_config.master_me_preset"
-                            :options="masterMePresetOptions"
-                            stacked
-                            radio
-                            :label="$gettext('Master_me Preset')"
-                        />
-
-                        <form-group-field
-                            id="edit_form_backend_master_me_loudness_target"
-                            class="col-md-6"
-                            :field="r$.backend_config.master_me_loudness_target"
-                            input-type="number"
-                            :input-attrs="{ min: '-50', max: '0', step: '1' }"
-                            :label="$gettext('Master_me Loudness Target (LUFS)')"
-                            :description="$gettext('The average target loudness (measured in LUFS) for the broadcasted stream. Values between -14 and -18 LUFS are common for Internet radio stations.')"
-                            clearable
-                        />
-                    </div>
-                </template>
 
                 <template v-if="isStereoToolEnabled && isStereoToolInstalled">
                     <form-markup id="stereo_tool_info">
@@ -268,18 +223,10 @@
                     >
                         <template #description>
                             {{
-                                $gettext('This mode disables AzuraCast\'s AutoDJ management, using Liquidsoap itself to manage song playback. "next song" and some other features will not be available.')
+                                $gettext('This mode disables AzuraCast\'s AutoDJ management, using the streaming backend itself to manage song playback. "next song" and some other features will not be available.')
                             }}
                         </template>
                     </form-group-checkbox>
-
-                    <form-group-checkbox
-                        id="edit_form_backend_config_write_playlists_to_liquidsoap"
-                        class="col-md-12"
-                        :field="r$.backend_config.write_playlists_to_liquidsoap"
-                        :label="$gettext('Always Write Playlists to Liquidsoap')"
-                        :description="$gettext('By default, all playlists are written to Liquidsoap as a backup in case the normal AutoDJ fails. This can affect CPU load, especially on startup. Disable to only write essential playlists to Liquidsoap.')"
-                    />
 
                     <form-group-field
                         id="edit_form_backend_telnet_port"
@@ -319,8 +266,8 @@
                         :options="performanceModeOptions"
                         stacked
                         radio
-                        :label="$gettext('Liquidsoap Performance Tuning')"
-                        :description="$gettext('If your installation is constrained by CPU or memory, you can change this setting to tune the resources used by Liquidsoap.')"
+                        :label="$gettext('Streaming Backend Performance Tuning')"
+                        :description="$gettext('If your installation is constrained by CPU or memory, you can change this setting to tune the resources used by the streaming backend.')"
                     />
 
                     <form-group-field
@@ -352,7 +299,6 @@ import {
     AudioProcessingMethods,
     BackendAdapters,
     CrossfadeModes,
-    MasterMePresets,
 } from "~/entities/ApiInterfaces.ts";
 import { SimpleFormOptionInput } from "~/functions/objectToFormOptions.ts";
 import { useFormTabClass } from "~/functions/useFormTabClass.ts";
@@ -374,13 +320,6 @@ const isStereoToolEnabled = computed(() => {
     return (
         form.value?.backend_config?.audio_processing_method ===
         (AudioProcessingMethods.StereoTool as string)
-    );
-});
-
-const isMasterMeEnabled = computed(() => {
-    return (
-        form.value?.backend_config?.audio_processing_method ===
-        (AudioProcessingMethods.MasterMe as string)
     );
 });
 
@@ -407,8 +346,8 @@ const { $gettext } = useTranslate();
 const backendTypeOptions = computed<SimpleFormOptionInput>(() => {
     return [
         {
-            text: $gettext("Use Liquidsoap on this server."),
-            value: BackendAdapters.Liquidsoap,
+            text: $gettext("Use the streaming backend on this server."),
+            value: BackendAdapters.StreamEngine,
         },
         {
             text: $gettext("Do not use an AutoDJ service."),
@@ -442,11 +381,7 @@ const audioProcessingOptions = computed<SimpleFormOptionInput>(() => {
         },
         {
             text: $gettext("Basic Normalization and Compression"),
-            value: AudioProcessingMethods.Liquidsoap,
-        },
-        {
-            text: $gettext("Master_me Post-processing"),
-            value: AudioProcessingMethods.MasterMe,
+            value: AudioProcessingMethods.Nrj,
         },
     ];
 
@@ -464,31 +399,6 @@ const charsetOptions = computed<SimpleFormOptionInput>(() => {
     return [
         { text: "UTF-8", value: "UTF-8" },
         { text: "ISO-8859-1", value: "ISO-8859-1" },
-    ];
-});
-
-const masterMePresetOptions = computed<SimpleFormOptionInput>(() => {
-    return [
-        {
-            text: $gettext("Music General"),
-            value: MasterMePresets.MusicGeneral,
-        },
-        {
-            text: $gettext("Speech General"),
-            value: MasterMePresets.SpeechGeneral,
-        },
-        {
-            text: $gettext("EBU R128"),
-            value: MasterMePresets.EbuR128,
-        },
-        {
-            text: $gettext("Apple Podcasts"),
-            value: MasterMePresets.ApplePodcasts,
-        },
-        {
-            text: $gettext("YouTube"),
-            value: MasterMePresets.YouTube,
-        },
     ];
 });
 

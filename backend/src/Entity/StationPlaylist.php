@@ -117,7 +117,7 @@ final class StationPlaylist implements
 
     #[
         OA\Property(
-            description: "The total time (in seconds) that Liquidsoap should buffer remote URL streams.",
+            description: "The total time (in seconds) that the streaming engine should buffer remote URL streams.",
             example: 0
         ),
         ORM\Column(name: 'remote_timeout', type: 'smallint')

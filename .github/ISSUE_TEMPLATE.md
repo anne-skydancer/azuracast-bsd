@@ -7,9 +7,6 @@ Notes:
 - Make sure your issue isn't already answered here: https://docs.azuracast.com/en/user-guide/troubleshooting
 -->
 
-**Using Docker installation method?**
-<!-- Yes / No -->
-
 **AzuraCast version:**
 <!-- (i.e. v0.10.1 for Stable Releases or 2021-02-07 #abcdefg for Rolling Releases -->
 

@@ -9,12 +9,12 @@ use App\Entity\StationMedia;
 use App\Entity\StationPlaylist;
 use App\Entity\StationQueue;
 use App\Entity\StationRequest;
-use App\Radio\Backend\Liquidsoap\ConfigWriter;
+use App\Radio\Backend\AnnotationWriter;
 use RuntimeException;
 use Symfony\Contracts\EventDispatcher\Event;
 
 /**
- * Event triggered every time the next-playing song is preparing to be annotated for delivery to Liquidsoap.
+ * Event triggered every time the next-playing song is preparing to be annotated for delivery to the streaming engine.
  */
 final class AnnotateNextSong extends Event
 {
@@ -104,7 +104,7 @@ final class AnnotateNextSong extends Event
     }
 
     /**
-     * Compile the resulting annotations into one string for Liquidsoap to consume.
+     * Compile the resulting annotations into one string for the streaming engine to consume.
      */
     public function buildAnnotations(): string
     {
@@ -115,7 +115,7 @@ final class AnnotateNextSong extends Event
         if (!empty($this->annotations)) {
             $annotateParts = [
                 'annotate',
-                ConfigWriter::annotateArray($this->annotations),
+                AnnotationWriter::annotateArray($this->annotations),
                 $this->songPath,
             ];
 

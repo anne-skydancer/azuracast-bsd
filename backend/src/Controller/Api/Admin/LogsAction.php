@@ -231,22 +231,6 @@ final class LogsAction extends StationLogsAction
             );
         }
 
-        $liquidsoapDir = $this->environment->getParentDirectory() . '/liquidsoap';
-
-        $logPaths[] = new LogType(
-            'azuracast_liq_functions',
-            __('AzuraCast Common Liquidsoap Functions'),
-            $liquidsoapDir . '/azuracast.liq',
-            false,
-        );
-
-        $logPaths[] = new LogType(
-            'azuracast_liq_autocue',
-            __('AutoCue Liquidsoap Functions'),
-            $liquidsoapDir . '/autocue.liq',
-            false,
-        );
-
         return $logPaths;
     }
 }

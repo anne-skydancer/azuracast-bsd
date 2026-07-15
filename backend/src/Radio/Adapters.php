@@ -60,7 +60,17 @@ final class Adapters
         return $this->listAdaptersFromEnum(FrontendAdapters::cases(), $checkInstalled);
     }
 
-    public function getBackendAdapter(Station $station): ?BackendInterface
+    /**
+     * @return (AbstractLocalAdapter&BackendInterface)|null Every real backend adapter
+     *         (currently just StreamEngine) both extends AbstractLocalAdapter (for the shared
+     *         process lifecycle: isRunning/start/stop/write/reload/hasCommand/getLogPath/
+     *         resolveSupervisor) and implements BackendInterface (for the backend-specific
+     *         control-API methods). The intersection type reflects that real guarantee, rather
+     *         than under-declaring it as bare BackendInterface (which doesn't itself require
+     *         extending AbstractLocalAdapter, even though every current/expected implementation
+     *         does).
+     */
+    public function getBackendAdapter(Station $station): (AbstractLocalAdapter&BackendInterface)|null
     {
         $className = $station->backend_type->getClass();
 
@@ -72,7 +82,7 @@ final class Adapters
     /**
      * @throws StationUnsupportedException
      */
-    public function requireBackendAdapter(Station $station): BackendInterface
+    public function requireBackendAdapter(Station $station): AbstractLocalAdapter&BackendInterface
     {
         $backend = $this->getBackendAdapter($station);
 

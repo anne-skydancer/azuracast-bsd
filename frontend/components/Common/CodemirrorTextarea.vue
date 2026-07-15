@@ -11,7 +11,6 @@
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
 import { javascript } from "@codemirror/lang-javascript";
-import { liquidsoap } from "codemirror-lang-liquidsoap";
 import { storeToRefs } from "pinia";
 import { computed } from "vue";
 import CodeMirror from "vue-codemirror6";
@@ -47,8 +46,6 @@ const lang = computed(() => {
             return javascript();
         case "html":
             return html();
-        case "liquidsoap":
-            return liquidsoap();
         default:
             return null;
     }

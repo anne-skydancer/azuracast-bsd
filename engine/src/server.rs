@@ -4,10 +4,14 @@
 //! `control_api.api_key` from the config, except `/health` which is
 //! unauthenticated (basic liveness probing).
 //!
-//! Phase 3 wired the two queue routes into the real playback engine.
-//! `/skip` and `/metadata` are now wired too (this phase) via the shared
-//! `ControlSignals` handle in `control.rs`; `/streamer/disconnect` remains a
-//! log-and-return stub pending Phase 4's live-DJ harbor.
+//! Phase 3 wired the two queue routes into the real playback engine, and
+//! `/skip`/`/metadata` via the shared `ControlSignals` handle in
+//! `control.rs`. Phase 4 wires the last remaining stub, `/streamer/disconnect`,
+//! directly to `harbor::LiveState::force_disconnect` -- this route doesn't
+//! need `ControlSignals`' poll-once-per-loop-iteration indirection at all
+//! (unlike `/skip`/`/metadata`, which affect *what the pipeline loop plays
+//! next*): forcibly closing a TCP connection is an immediate, self-contained
+//! action independent of the pipeline's loop cadence.
 
 use axum::{
     extract::{Path, Request, State},
@@ -23,6 +27,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::control::ControlSignals;
+use crate::harbor::LiveState;
 use crate::queue::TrackQueues;
 
 #[derive(Clone)]
@@ -35,6 +40,9 @@ pub struct AppState {
     /// `/skip` + `/metadata` signal handle shared with `pipeline.rs`'s loop
     /// -- see `control.rs`'s module doc.
     pub control: Arc<ControlSignals>,
+    /// Phase 4: shared live-DJ harbor state (`harbor.rs`) -- used here only
+    /// by `streamer_disconnect_handler`.
+    pub live: Arc<LiveState>,
 }
 
 /// Builds the full router: `/health` is unauthenticated, everything else
@@ -143,7 +151,17 @@ async fn metadata_handler(
     (StatusCode::OK, Json(json!({"ok": true})))
 }
 
-async fn streamer_disconnect_handler() -> impl IntoResponse {
-    tracing::info!("streamer disconnect requested");
+/// Real as of Phase 4: forcibly closes the currently-live harbor TCP
+/// connection, if any (SPEC.md's `input_streamer.stop` telnet/HTTP
+/// command), triggering the same disconnect sequence (SPEC.md C.4) a
+/// voluntary client disconnect would -- see `harbor::LiveState::force_disconnect`.
+/// Fire-and-forget, same as every other handler here: `200 {"ok": true}` is
+/// returned regardless of whether a connection was actually present to
+/// disconnect (matching `/skip`/`/metadata`'s "dispatch and don't wait"
+/// style; the caller has no obvious use for a false-vs-true distinction
+/// here since "nothing to disconnect" isn't an error condition).
+async fn streamer_disconnect_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let disconnected = state.live.force_disconnect();
+    tracing::info!("streamer disconnect requested (had active session: {disconnected})");
     (StatusCode::OK, Json(json!({"ok": true})))
 }

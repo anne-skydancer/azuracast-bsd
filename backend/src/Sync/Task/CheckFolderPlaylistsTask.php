@@ -14,8 +14,6 @@ use App\Entity\StationPlaylistFolder;
 use App\Entity\StorageLocation;
 use App\Flysystem\ExtendedFilesystemInterface;
 use App\Flysystem\StationFilesystems;
-use App\Message\WritePlaylistFileMessage;
-use Symfony\Component\Messenger\MessageBus;
 
 final class CheckFolderPlaylistsTask extends AbstractTask
 {
@@ -23,7 +21,6 @@ final class CheckFolderPlaylistsTask extends AbstractTask
         private readonly StationPlaylistFolderRepository $folderRepo,
         private readonly StationPlaylistMediaRepository $spmRepo,
         private readonly StationFilesystems $stationFilesystems,
-        private readonly MessageBus $messageBus,
     ) {
     }
 
@@ -76,15 +73,12 @@ final class CheckFolderPlaylistsTask extends AbstractTask
             return;
         }
 
-        $madeChanges = false;
-
         foreach ($folders as $folder) {
             $path = $folder->path;
 
             // Verify the folder still exists.
             if (!$fsMedia->directoryExists($path)) {
                 $this->em->remove($folder);
-                $madeChanges = true;
                 continue;
             }
 
@@ -119,8 +113,6 @@ final class CheckFolderPlaylistsTask extends AbstractTask
             }
 
             if ($addedRecords > 0 || $removedRecords > 0) {
-                $madeChanges = true;
-
                 $this->logger->debug(
                     sprintf(
                         '%d media added, %d media removed from folder.',
@@ -141,14 +133,6 @@ final class CheckFolderPlaylistsTask extends AbstractTask
                     ]
                 );
             }
-        }
-
-        if ($madeChanges) {
-            // Write changes to file.
-            $message = new WritePlaylistFileMessage();
-            $message->playlist_id = $playlist->id;
-
-            $this->messageBus->dispatch($message);
         }
     }
 }

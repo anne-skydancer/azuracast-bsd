@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
-use App\Radio\Backend\Liquidsoap\EncodableInterface;
-use App\Radio\Backend\Liquidsoap\EncodingFormat;
+use App\Radio\Backend\EncodableInterface;
+use App\Radio\Backend\EncodingFormat;
 use App\Radio\Enums\HlsStreamProfiles;
 use App\Radio\Enums\StreamFormats;
 use App\Utilities\Strings;

@@ -10,7 +10,7 @@ use App\Radio\Enums\AudioQueues;
 use Psr\Http\Message\UriInterface;
 
 /**
- * Common contract for the radio streaming/AutoDJ backend adapters (Liquidsoap, StreamEngine, etc.).
+ * Common contract for the radio streaming/AutoDJ backend adapters (currently just StreamEngine).
  *
  * Concrete implementations extend App\Radio\AbstractLocalAdapter, which supplies the generic
  * process lifecycle (start/stop/restart/isRunning/getLogPath) by calling through to the

@@ -2,7 +2,7 @@
 name = "azuracast-engine"
 version = "0.1.0"
 edition = "2021"
-description = "Rust replacement for AzuraCast's Liquidsoap streaming engine (skeleton phase)."
+description = "AzuraCast's Rust-based streaming engine (replaces the historical Liquidsoap backend)."
 
 [[bin]]
 name = "azuracast-engine"

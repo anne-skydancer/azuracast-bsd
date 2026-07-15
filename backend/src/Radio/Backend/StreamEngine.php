@@ -11,8 +11,12 @@ use App\Http\Router;
 use App\Nginx\CustomUrls;
 use App\Radio\AbstractLocalAdapter;
 use App\Radio\Configuration;
+use App\Radio\Enums\AudioProcessingMethods;
 use App\Radio\Enums\AudioQueues;
+use App\Radio\Enums\FrontendAdapters;
+use App\Radio\Enums\StreamFormats;
 use App\Radio\FallbackFile;
+use App\Radio\StereoTool;
 use GuzzleHttp\Client;
 use LogicException;
 use Psr\EventDispatcher\EventDispatcherInterface;
@@ -94,6 +98,52 @@ final class StreamEngine extends AbstractLocalAdapter implements BackendInterfac
         $harborEnabled = $station->enable_streamers;
         $djBuffer = $backendConfig->dj_buffer;
 
+        // Audio post-processing: `nrj` (normalize + compress, hand-rolled DSP in the engine, see
+        // engine/src/audio_processing.rs) or `stereo_tool` (piped through an operator-provided,
+        // separately-licensed `stereo_tool` binary as a subprocess -- the engine does not attempt
+        // to reimplement Stereo Tool's own processing, only to pipe audio through it). Emitted as
+        // `method = "none"` (i.e. the whole section still appears, but inert) whenever the
+        // configured method isn't actually usable, rather than silently omitting the section --
+        // that keeps `[audio_processing]` always present for the engine to parse unconditionally.
+        $audioProcessingMethod = $backendConfig->getAudioProcessingMethodEnum();
+        $audioProcessingLines = [
+            '',
+            '[audio_processing]',
+        ];
+
+        if (
+            AudioProcessingMethods::StereoTool === $audioProcessingMethod
+            && StereoTool::isReady($station)
+        ) {
+            $stereoToolBinary = StereoTool::getLibraryPath() . '/stereo_tool';
+
+            // Only the standalone CLI binary is supported as a subprocess pipe target -- the
+            // shared-library (.so) variant Liquidsoap could `dlopen()` and call directly has no
+            // equivalent in the engine (that would require FFI bindings against Stereo Tool's own
+            // undocumented, proprietary ABI). If only the .so variant is installed, post-processing
+            // is simply unavailable, same as if no method were configured at all.
+            if (is_file($stereoToolBinary)) {
+                $audioProcessingLines[] = 'method = "stereo_tool"';
+                $audioProcessingLines[] = 'include_live = ' . self::tomlBool($backendConfig->post_processing_include_live);
+                $audioProcessingLines[] = 'stereo_tool_binary = ' . self::tomlString($stereoToolBinary);
+                $audioProcessingLines[] = 'stereo_tool_preset_path = ' . self::tomlString(
+                    $station->getRadioConfigDir() . '/' . $backendConfig->stereo_tool_configuration_path
+                );
+
+                $stereoToolLicenseKey = $backendConfig->stereo_tool_license_key ?? '';
+                if ('' !== $stereoToolLicenseKey) {
+                    $audioProcessingLines[] = 'stereo_tool_license_key = ' . self::tomlString($stereoToolLicenseKey);
+                }
+            } else {
+                $audioProcessingLines[] = 'method = "none"';
+            }
+        } elseif (AudioProcessingMethods::Nrj === $audioProcessingMethod) {
+            $audioProcessingLines[] = 'method = "nrj"';
+            $audioProcessingLines[] = 'include_live = ' . self::tomlBool($backendConfig->post_processing_include_live);
+        } else {
+            $audioProcessingLines[] = 'method = "none"';
+        }
+
         $harborLines = [
             '',
             '[harbor]',
@@ -107,6 +157,85 @@ final class StreamEngine extends AbstractLocalAdapter implements BackendInterfac
         if (0 !== $djBuffer) {
             $harborLines[] = 'buffer_secs = ' . self::tomlFloat((float)$djBuffer);
             $harborLines[] = 'max_buffer_secs = ' . self::tomlFloat(max($djBuffer + 5, 10));
+        }
+
+        // Phase 5: Icecast/Shoutcast output. `[icecast_output]` is the ONE connection target
+        // every local `[[mounts]]` entry pushes to -- per SPEC.md B.7, mounts don't carry their
+        // own host/port/credentials, they're all paths on the station's own Icecast frontend
+        // (`frontend_config->host ?? '127.0.0.1'` + `frontend_config->port`, authenticated with
+        // `frontend_config->source_pw`). Omitted entirely if the station has no local frontend
+        // at all (`frontend_type === Remote`, SPEC.md A.6) -- there's nothing local to push to.
+        // `[[remotes]]` is a distinct concept: each StationRemote carries its OWN independent
+        // host/port/mount/credentials (SPEC.md A.8), since it's relaying to a genuinely separate
+        // third-party server, not the station's own frontend.
+        $outputLines = [];
+
+        $frontendConfig = $station->frontend_config;
+        $isLocalFrontend = FrontendAdapters::Remote !== $station->frontend_type;
+
+        if ($isLocalFrontend) {
+            $outputLines[] = '';
+            $outputLines[] = '[icecast_output]';
+            $outputLines[] = 'host = ' . self::tomlString($frontendConfig->host ?? '127.0.0.1');
+            $outputLines[] = 'port = ' . ($frontendConfig->port ?? 8000);
+            $outputLines[] = 'source_password = ' . self::tomlString($frontendConfig->source_pw);
+
+            foreach ($station->mounts as $mount) {
+                $outputLines[] = '';
+                $outputLines[] = '[[mounts]]';
+                $outputLines[] = 'path = ' . self::tomlString($mount->name);
+                $outputLines[] = 'format = ' . self::tomlString(($mount->autodj_format ?? StreamFormats::default())->value);
+                $outputLines[] = 'bitrate = ' . ($mount->autodj_bitrate ?? 128);
+                $outputLines[] = 'is_public = ' . self::tomlBool($mount->is_public);
+            }
+        }
+
+        // HLS output (SPEC.md B.8). File-based, not a network protocol: the engine segments
+        // directly to `station->getRadioHlsDir()`, and nginx serves that directory as-is
+        // (`Nginx\ConfigWriter::writeHlsSection()`, unchanged by this). No-op (empty
+        // `$hlsLines`) if `!enable_hls` or there are no HLS streams configured, mirroring B.8's
+        // own early-return conditions. `share_encoders` is not implemented here, consistent with
+        // every other output section in this file -- each HLS rendition gets its own independent
+        // ffmpeg process, same simplification already made for `[[mounts]]`/`[[remotes]]`.
+        $hlsLines = [];
+
+        if ($station->enable_hls && $station->hls_streams->count() > 0) {
+            $hlsLines[] = '';
+            $hlsLines[] = '[hls]';
+            $hlsLines[] = 'enabled = true';
+            $hlsLines[] = 'base_dir = ' . self::tomlString($station->getRadioHlsDir());
+            $hlsLines[] = 'segment_secs = ' . self::tomlFloat((float)$backendConfig->hls_segment_length);
+            $hlsLines[] = 'segments_in_playlist = ' . $backendConfig->hls_segments_in_playlist;
+            $hlsLines[] = 'segments_overhead = ' . $backendConfig->hls_segments_overhead;
+
+            foreach ($station->hls_streams as $hlsStream) {
+                $hlsLines[] = '';
+                $hlsLines[] = '[[hls_streams]]';
+                $hlsLines[] = 'name = ' . self::tomlString($hlsStream->name);
+                $hlsLines[] = 'bitrate = ' . ($hlsStream->bitrate ?? 128);
+            }
+        }
+
+        foreach ($station->remotes as $remote) {
+            $remoteUri = $remote->getUrlAsUri();
+            $outputLines[] = '';
+            $outputLines[] = '[[remotes]]';
+            $outputLines[] = 'host = ' . self::tomlString($remoteUri->getHost());
+            $outputLines[] = 'port = ' . ($remote->source_port ?? $remoteUri->getPort() ?? 8000);
+            $outputLines[] = 'mount = ' . self::tomlString($remote->source_mount ?? '/');
+            if (!empty($remote->source_username)) {
+                $outputLines[] = 'username = ' . self::tomlString($remote->source_username);
+            }
+            $outputLines[] = 'password = ' . self::tomlString($remote->source_password ?? '');
+            $outputLines[] = 'format = ' . self::tomlString(($remote->autodj_format ?? StreamFormats::default())->value);
+            $outputLines[] = 'bitrate = ' . ($remote->autodj_bitrate ?? 128);
+            $outputLines[] = 'is_public = ' . self::tomlBool($remote->is_public);
+            // Only "icecast" (standard Icecast2 source-client protocol) is implemented by the
+            // engine as of this phase; legacy Shoutcast/RSAS relay targets are deferred (same
+            // scope cut as Phase 4's harbor input, which also only implements Icecast2-style
+            // framing) -- the engine logs and skips any `[[remotes]]` entry it doesn't recognize
+            // rather than failing the whole config.
+            $outputLines[] = 'protocol = "icecast"';
         }
 
         $lines = [
@@ -135,7 +264,10 @@ final class StreamEngine extends AbstractLocalAdapter implements BackendInterfac
             'high = ' . self::tomlFloat($backendConfig->crossfade_smart_high),
             'medium = ' . self::tomlFloat($backendConfig->crossfade_smart_medium),
             'margin = ' . self::tomlFloat($backendConfig->crossfade_smart_margin),
+            ...$audioProcessingLines,
             ...$harborLines,
+            ...$outputLines,
+            ...$hlsLines,
         ];
 
         return implode("\n", $lines) . "\n";

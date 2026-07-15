@@ -40,7 +40,7 @@ final class Annotations implements EventSubscriberInterface
         return [
             AnnotateNextSong::class => [
                 ['annotateSongPath', 20],
-                ['annotateForLiquidsoap', 15],
+                ['annotateForEngine', 15],
                 ['addCachedAutocueData', 12],
                 ['annotatePlaylist', 10],
                 ['annotateRequest', 5],
@@ -84,7 +84,7 @@ final class Annotations implements EventSubscriberInterface
         }
     }
 
-    public function annotateForLiquidsoap(AnnotateNextSong $event): void
+    public function annotateForEngine(AnnotateNextSong $event): void
     {
         $media = $event->getMedia();
         if (null === $media) {
@@ -193,7 +193,7 @@ final class Annotations implements EventSubscriberInterface
             return [];
         }
 
-        // Liquidsoap expects amplify to be in dB.
+        // The engine's annotation parser expects amplify to be in dB.
         if (isset($annotations[Meta::AMPLIFY])) {
             $amplify = trim((string) $annotations[Meta::AMPLIFY]);
             if (!str_ends_with($amplify, 'dB')) {

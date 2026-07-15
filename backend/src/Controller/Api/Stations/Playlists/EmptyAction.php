@@ -12,11 +12,9 @@ use App\Entity\Repository\StationPlaylistRepository;
 use App\Exception;
 use App\Http\Response;
 use App\Http\ServerRequest;
-use App\Message\WritePlaylistFileMessage;
 use App\OpenApi;
 use OpenApi\Attributes as OA;
 use Psr\Http\Message\ResponseInterface;
-use Symfony\Component\Messenger\MessageBus;
 
 #[OA\Delete(
     path: '/station/{station_id}/playlist/{id}/empty',
@@ -45,7 +43,6 @@ final readonly class EmptyAction implements SingleActionInterface
     public function __construct(
         private StationPlaylistRepository $playlistRepo,
         private StationPlaylistMediaRepository $spmRepo,
-        private MessageBus $messageBus,
     ) {
     }
 
@@ -64,12 +61,6 @@ final readonly class EmptyAction implements SingleActionInterface
         }
 
         $this->spmRepo->emptyPlaylist($record);
-
-        // Write changes to file.
-        $message = new WritePlaylistFileMessage();
-        $message->playlist_id = $record->id;
-
-        $this->messageBus->dispatch($message);
 
         return $response->withJson(
             new Status(
