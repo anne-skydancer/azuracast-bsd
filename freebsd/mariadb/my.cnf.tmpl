@@ -11,7 +11,8 @@
 # This mirrors the settings AzuraCast bakes into its Docker image via
 # util/docker/mariadb/mariadb/db.cnf.tmpl and
 # util/docker/mariadb/setup/mariadb.sh, adapted for a single-purpose
-# FreeBSD jail (10.8.0.100 / mariadb.amc202d.lan) that ONLY runs MariaDB.
+# FreeBSD jail (MARIADB_JAIL_IP / MARIADB_JAIL_HOSTNAME in freebsd/env.conf)
+# that ONLY runs MariaDB.
 #
 
 [mysqld]

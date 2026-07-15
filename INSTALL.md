@@ -23,15 +23,22 @@ instructions.
   ports) for each station — this fork's `mariadb`/`webapp` jails do not include Icecast; see
   `freebsd/icecast/README.md` if you want AzuraCast to manage a remote Icecast jail's process
   lifecycle via supervisord.
-- A GitHub account with access to this repository (public: nothing extra needed; private: an SSH
-  deploy key or personal access token — see step 4 below).
+- A GitHub account with access to your fork of this repository (public: nothing extra needed;
+  private: an SSH deploy key or personal access token — see step 5 below).
 
 ## 1. Review and edit `freebsd/env.conf`
 
 Every IP, hostname, path, and epair interface number used across the whole `freebsd/` tree comes
-from this one file. The values already in it are this project's own reference deployment (e.g.
-`MARIADB_JAIL_IP=10.8.0.100`), not a universal default — edit it to match your actual network
-layout before doing anything else.
+from this one file. **The values shipped in it are not real** — they're placeholders drawn
+deliberately from IETF's documentation-reserved ranges (`192.0.2.0/24` / `2001:db8::/32`, RFC
+5737/3849) and the reserved `example.com` domain (RFC 2606), specifically so this repository never
+has to contain anyone's actual network topology. They are guaranteed by IETF to never be assigned
+to a real host and **will not work on a real network as shipped.** Open the file and set every
+variable in it — `MARIADB_JAIL_NAME`, `MARIADB_JAIL_IP`/`IP6`, `WEBAPP_JAIL_NAME`,
+`WEBAPP_JAIL_IP`/`IP6`, the netmask/prefix-length variables, the epair numbers, the default-route
+addresses, the hostnames — to your own host's jail registry and network layout before doing
+anything else. Nothing below this step should be read as "your setup will look like this";
+substitute your own `env.conf` values throughout.
 
 ## 2. Generate and install the jail stanzas
 
@@ -41,7 +48,9 @@ sh freebsd/generate-jail-conf.sh
 
 Renders `freebsd/jail.conf.d/mariadb.conf` and `webapp.conf` from your edited `env.conf`. Merge
 both into your host's `/etc/jail.conf` (or your own per-jail include mechanism), then start both
-jails:
+jails using whatever names you set for `MARIADB_JAIL_NAME`/`WEBAPP_JAIL_NAME` in `env.conf` (the
+examples below use the shipped defaults, `mariadb`/`webapp` — substitute your own if you changed
+them):
 
 ```sh
 service jail start mariadb
@@ -65,27 +74,30 @@ application itself — that's the next step.
 
 ## 5. Get onto the `webapp` jail and clone this repository
 
-Everything from here runs **inside** the `webapp` jail, not on the bare host and not on whatever
-machine you're reading this from. From the host:
+Everything from here runs **inside** the `webapp` jail (whatever you named it in `env.conf`), not
+on the bare host and not on whatever machine you're reading this from. From the host:
 
 ```sh
-jexec webapp sh
+jexec <your-webapp-jail-name> sh
 ```
 
 (or SSH directly to the jail's own address if you've set up `sshd` inside it — either way, you
 need a shell *inside* the jail for the remaining steps.)
 
-Then clone this fork:
+Then clone your fork of this project, into wherever you want the application deployed (the
+examples below use `/usr/local/www/azuracast`, matching the path the `rc.d/azuracast` step in
+`freebsd/webapp/README.md` sets as `azuracast_path` — pick your own and keep it consistent between
+the two):
 
 ```sh
-git clone https://github.com/anne-skydancer/azuracast-bsd.git /usr/local/www/azuracast
+git clone <your-fork-url> /usr/local/www/azuracast
 cd /usr/local/www/azuracast
 ```
 
-If this repository is private, either:
-- use an SSH remote (`git clone git@github.com:anne-skydancer/azuracast-bsd.git ...`) with a
-  deploy key added to the jail's `azuracast` user (or root, for the initial clone) and to the
-  repo's GitHub deploy keys, or
+If your repository is private, either:
+- use an SSH remote (`git clone git@github.com:<you>/<your-fork>.git ...`) with a deploy key added
+  to the jail's `azuracast` user (or root, for the initial clone) and to the repo's GitHub deploy
+  keys, or
 - use an HTTPS URL with a GitHub personal access token embedded
   (`https://<token>@github.com/...`) or supplied when prompted.
 

@@ -1,18 +1,21 @@
 # AzuraCast on FreeBSD jails (no Docker)
 
 This directory replaces AzuraCast's Docker Compose stack with three
-native FreeBSD jails on the same host as the existing `skydancer` and
-`icecast` jails, sharing their `jail.conf` schema (VNET + `epairN`,
+native FreeBSD jails on the same host as your existing per-station
+Icecast jails, sharing their `jail.conf` schema (VNET + `epairN`,
 static internal IPv4/IPv6, default routes via `DEFAULT_ROUTE_V4` in
-`env.conf`, currently `10.0.0.254`).
+`env.conf`).
 
 ## Before you do anything else
 
 Every IP, hostname, path, and epair interface used across this whole
 `freebsd/` tree lives in one place: [`freebsd/env.conf`](env.conf).
-Review and edit that file to match your own jail/network layout first
-(the values shipped there are this project's own reference deployment,
-not a universal default), then run:
+**The values shipped in that file are not real** — they're IETF
+documentation-reserved placeholders (`192.0.2.0/24` / `2001:db8::/32` per
+RFC 5737/3849, plus the reserved `example.com` domain per RFC 2606), used
+specifically so this repository never has to contain anyone's actual
+network topology. They will not work on a real network as shipped. Review
+and edit that file to match your own jail/network layout first, then run:
 
 ```sh
 sh freebsd/generate-jail-conf.sh
@@ -26,9 +29,9 @@ the one rc.d script that must run standalone at jail boot, documents the
 
 | Jail | IP | Purpose | Setup |
 |---|---|---|---|
-| `mariadb` | value of `MARIADB_JAIL_IP` in `env.conf` (currently `10.8.0.100`) / `::100` | Database only | [`freebsd/mariadb/`](mariadb/README.md) |
-| `webapp` | value of `WEBAPP_JAIL_IP` in `env.conf` (currently `10.8.0.110`) / `::110` | nginx, php-fpm, Valkey, Centrifugo, SFTPGo, cron, supervisord | [`freebsd/webapp/`](webapp/README.md) |
-| `skydancer`, `entanglements`, ... (one per station) | (existing, per-station) | Audio frontend (Icecast) | Icecast itself already set up outside this change per jail — see Phase 1's Risk #1 in the project plan re: the custom Icecast-KH fork, still unaddressed. [`freebsd/icecast/`](icecast/README.md) is a *template* (not a fixed single jail like the two rows above) that makes an already-running Icecast jail's supervisord remotely manageable by AzuraCast's PHP side — it does not install or build Icecast itself. |
+| `mariadb` (name configurable via `MARIADB_JAIL_NAME`) | value of `MARIADB_JAIL_IP`/`MARIADB_JAIL_IP6` in `env.conf` | Database only | [`freebsd/mariadb/`](mariadb/README.md) |
+| `webapp` (name configurable via `WEBAPP_JAIL_NAME`) | value of `WEBAPP_JAIL_IP`/`WEBAPP_JAIL_IP6` in `env.conf` | nginx, php-fpm, Valkey, Centrifugo, SFTPGo, cron, supervisord | [`freebsd/webapp/`](webapp/README.md) |
+| one jail per station | (existing, per-station, whatever you've named them) | Audio frontend (Icecast) | Icecast itself already set up outside this change per jail — see Phase 1's Risk #1 in the project plan re: the custom Icecast-KH fork, still unaddressed. [`freebsd/icecast/`](icecast/README.md) is a *template* (not a fixed single jail like the two rows above) that makes an already-running Icecast jail's supervisord remotely manageable by AzuraCast's PHP side — it does not install or build Icecast itself. |
 
 `jail.conf.d/mariadb.conf` and `jail.conf.d/webapp.conf` hold the actual
 jail stanzas (generated from the `.tmpl` files by
@@ -44,8 +47,7 @@ anything else in either subdirectory.
 2. Provision `mariadb` first (see `mariadb/README.md`) — `webapp`'s
    rc.d script waits on it at boot, and its database user grant is
    scoped specifically to `webapp`'s IP (the value of `WEBAPP_JAIL_IP`
-   in `env.conf`, currently `10.8.0.110`), so get the DB up before
-   starting `webapp`.
+   in `env.conf`), so get the DB up before starting `webapp`.
 3. Provision `webapp` (see `webapp/README.md`).
 4. Deploy the AzuraCast PHP application itself into `webapp` (git
    clone/composer install/frontend build) — this isn't covered by
@@ -54,7 +56,8 @@ anything else in either subdirectory.
    Rust streaming engine binary via `freebsd/webapp/build-engine.sh`
    (see `freebsd/webapp/README.md`'s setup order, step 9) — without
    this, no station can actually start.
-5. Confirm `webapp` can reach `mariadb` on port 3306. Restricting network
+5. Confirm `webapp` can reach `mariadb` on the value of `MARIADB_PORT` in
+   `env.conf`. Restricting network
    access beyond that (via `pf` or otherwise) is your own firewall
    policy to set up if you want it — out of scope for this project,
    which relies on jail isolation as the actual security boundary.

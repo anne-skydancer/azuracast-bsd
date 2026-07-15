@@ -1,16 +1,16 @@
 # mariadb jail (FreeBSD, native)
 
 This directory replaces AzuraCast's Dockerized MariaDB with a native
-FreeBSD jail install. This jail (`mariadb`, the value of `MARIADB_JAIL_IP`
-in `freebsd/env.conf` (currently `10.8.0.100`) / the value of
-`MARIADB_JAIL_HOSTNAME` (currently `mariadb.amc202d.lan`)) runs **only
+FreeBSD jail install. This jail (named by `MARIADB_JAIL_NAME`, addressed
+by `MARIADB_JAIL_IP`/`MARIADB_JAIL_IP6`, and reachable at
+`MARIADB_JAIL_HOSTNAME` — all set in `freebsd/env.conf`) runs **only
 MariaDB** — no PHP, nginx, Redis/Valkey, or any other AzuraCast
 component. The application itself (PHP/nginx) runs separately in the
-`webapp` jail (the value of `WEBAPP_JAIL_IP` in `freebsd/env.conf`,
-currently `10.8.0.110`), which connects to this jail on port
-`MARIADB_PORT` (currently `3306`). Restricting network access to that
-port to only the `webapp` jail (via `pf` or otherwise) is left entirely
-to your own firewall policy — out of scope for this project.
+`webapp` jail (the value of `WEBAPP_JAIL_IP` in `freebsd/env.conf`),
+which connects to this jail on the port set by `MARIADB_PORT`.
+Restricting network access to that port to only the `webapp` jail (via
+`pf` or otherwise) is left entirely to your own firewall policy — out
+of scope for this project.
 
 All of the addresses, paths, and hostnames mentioned in this README come
 from `freebsd/env.conf` — edit that file first if your deployment uses a
@@ -80,9 +80,8 @@ use both addresses, not just the network layer:
    - database `azuracast` (utf8mb4 / utf8mb4_general_ci)
    - user `'azuracast'@'WEBAPP_JAIL_IP'` **and**
      `'azuracast'@'WEBAPP_JAIL_IP6'` (scoped to the webapp jail's IPv4
-     address, currently `10.8.0.110`, and its IPv6 address, currently
-     `2001:8a0:6a32:2100::110` — both values from `freebsd/env.conf` —
-     i.e. the webapp jail's addresses only — deliberately **not**
+     and IPv6 addresses, both values from `freebsd/env.conf` — i.e. the
+     webapp jail's addresses only — deliberately **not**
      `'azuracast'@'%'` and **not** `'azuracast'@'localhost'`, since the
      app connects over the network from a different jail). Both users
      share the same password (`AZURACAST_DB_PASSWORD`) — this is one
@@ -100,14 +99,13 @@ use both addresses, not just the network layer:
 ## `.env` values for the `webapp` jail
 
 Point the AzuraCast application (running in the `webapp` jail — the value
-of `WEBAPP_JAIL_IP` in `freebsd/env.conf`, currently `10.8.0.110`) at this
-jail with:
+of `WEBAPP_JAIL_IP` in `freebsd/env.conf`) at this jail with:
 
 ```
-MYSQL_HOST=<MARIADB_JAIL_IP, currently 10.8.0.100>
-MYSQL_PORT=<MARIADB_PORT, currently 3306>
-MYSQL_DATABASE=<AZURACAST_DB_NAME_DEFAULT, currently azuracast>
-MYSQL_USER=<AZURACAST_DB_USER_DEFAULT, currently azuracast>
+MYSQL_HOST=<value of MARIADB_JAIL_IP in freebsd/env.conf>
+MYSQL_PORT=<value of MARIADB_PORT in freebsd/env.conf>
+MYSQL_DATABASE=<value of AZURACAST_DB_NAME_DEFAULT in freebsd/env.conf, or AZURACAST_DB_NAME if you overrode it>
+MYSQL_USER=<value of AZURACAST_DB_USER_DEFAULT in freebsd/env.conf, or AZURACAST_DB_USER if you overrode it>
 MYSQL_PASSWORD=<the password you set via AZURACAST_DB_PASSWORD in step 3>
 ```
 

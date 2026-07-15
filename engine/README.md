@@ -103,7 +103,7 @@ api_key = "the-station-adapter-api-key"
 # address (no brackets, no port -- port is always the separate `port` field
 # above). IPv6 is fully supported, e.g.:
 #   bind_address = "::1"                        # IPv6 loopback
-#   bind_address = "2001:8a0:6a32:2100::110"     # IPv6 station address
+#   bind_address = "2001:db8::1"                 # any other IPv6 literal
 
 [callbacks]
 base_url = "http://127.0.0.1:6010"

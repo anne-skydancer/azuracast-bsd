@@ -33,14 +33,18 @@ render() {
         -e "s|@@MARIADB_JAIL_PATH@@|${MARIADB_JAIL_PATH}|g" \
         -e "s|@@MARIADB_JAIL_EPAIR@@|${MARIADB_JAIL_EPAIR}|g" \
         -e "s|@@MARIADB_JAIL_IP@@|${MARIADB_JAIL_IP}|g" \
+        -e "s|@@MARIADB_JAIL_NETMASK@@|${MARIADB_JAIL_NETMASK}|g" \
         -e "s|@@MARIADB_JAIL_IP6@@|${MARIADB_JAIL_IP6}|g" \
+        -e "s|@@MARIADB_JAIL_IP6_PREFIX@@|${MARIADB_JAIL_IP6_PREFIX}|g" \
         -e "s|@@MARIADB_PORT@@|${MARIADB_PORT}|g" \
         -e "s|@@WEBAPP_JAIL_NAME@@|${WEBAPP_JAIL_NAME}|g" \
         -e "s|@@WEBAPP_JAIL_HOSTNAME@@|${WEBAPP_JAIL_HOSTNAME}|g" \
         -e "s|@@WEBAPP_JAIL_PATH@@|${WEBAPP_JAIL_PATH}|g" \
         -e "s|@@WEBAPP_JAIL_EPAIR@@|${WEBAPP_JAIL_EPAIR}|g" \
         -e "s|@@WEBAPP_JAIL_IP@@|${WEBAPP_JAIL_IP}|g" \
+        -e "s|@@WEBAPP_JAIL_NETMASK@@|${WEBAPP_JAIL_NETMASK}|g" \
         -e "s|@@WEBAPP_JAIL_IP6@@|${WEBAPP_JAIL_IP6}|g" \
+        -e "s|@@WEBAPP_JAIL_IP6_PREFIX@@|${WEBAPP_JAIL_IP6_PREFIX}|g" \
         -e "s|@@VM_PUBLIC_BRIDGE@@|${VM_PUBLIC_BRIDGE}|g" \
         -e "s|@@DEFAULT_ROUTE_V4@@|${DEFAULT_ROUTE_V4}|g" \
         -e "s|@@DEFAULT_ROUTE_V6_GW@@|${DEFAULT_ROUTE_V6_GW}|g" \

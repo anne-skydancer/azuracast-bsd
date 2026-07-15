@@ -3,8 +3,8 @@
 # freebsd/mariadb/00-install.sh
 #
 # Installs and enables MariaDB server inside the `mariadb` jail
-# (10.8.0.100 / mariadb.amc202d.lan). This jail runs ONLY MariaDB —
-# no PHP, no nginx, no Redis/Valkey.
+# (MARIADB_JAIL_IP/MARIADB_JAIL_HOSTNAME in freebsd/env.conf). This jail
+# runs ONLY MariaDB — no PHP, no nginx, no Redis/Valkey.
 #
 # Source-of-truth version note:
 #   The Docker build (Dockerfile, `FROM mariadb:lts-noble AS mariadb`) only

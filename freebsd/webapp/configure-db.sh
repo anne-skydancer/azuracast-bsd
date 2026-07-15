@@ -18,9 +18,10 @@
 #      (this host, another jail, a remote box) -- you supply its
 #      address, port, database name, user, and password directly.
 #   2. You don't -- this falls back to the default topology documented
-#      in freebsd/mariadb/ (a dedicated `mariadb` jail at 10.8.0.100),
-#      and only prompts for the database name/user/password (host/port
-#      are the known defaults for that jail).
+#      in freebsd/mariadb/ (a dedicated `mariadb` jail at whatever address
+#      MARIADB_JAIL_IP in env.conf resolves to), and only prompts for the
+#      database name/user/password (host/port are the known defaults for
+#      that jail).
 #
 # Either way, nothing here provisions a server for you -- if you pick
 # option 2 and haven't already run freebsd/mariadb/00-install.sh +

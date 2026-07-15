@@ -165,15 +165,14 @@ async fn run(cfg: EngineConfig) {
     };
 
     // `bind_address` is a bare IP literal (no brackets, no port) per the
-    // config contract — e.g. "127.0.0.1", "::1", or
-    // "2001:8a0:6a32:2100::110". Parsing it as `std::net::IpAddr` (which
-    // correctly handles both IPv4 and unbracketed IPv6 forms) and building a
-    // `SocketAddr` from the parsed IP + port avoids the naive
-    // `format!("{ip}:{port}")` string-concatenation bug: for IPv6, that
-    // would produce an ambiguous/unparseable string like
-    // "2001:8a0:6a32:2100::110:5000" because the address itself already
-    // contains colons and must be bracketed before combining with a port in
-    // host:port notation.
+    // config contract — e.g. "127.0.0.1", "::1", or any other IPv4/IPv6
+    // literal. Parsing it as `std::net::IpAddr` (which correctly handles
+    // both IPv4 and unbracketed IPv6 forms) and building a `SocketAddr`
+    // from the parsed IP + port avoids the naive `format!("{ip}:{port}")`
+    // string-concatenation bug: for IPv6, that would produce an
+    // ambiguous/unparseable string like "2001:db8::1:5000" because the
+    // address itself already contains colons and must be bracketed before
+    // combining with a port in host:port notation.
     let ip_addr: std::net::IpAddr = match cfg.control_api.bind_address.parse() {
         Ok(ip) => ip,
         Err(e) => {

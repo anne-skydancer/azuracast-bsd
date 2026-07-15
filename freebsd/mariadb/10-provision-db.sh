@@ -2,25 +2,27 @@
 #
 # freebsd/mariadb/10-provision-db.sh
 #
-# One-time provisioning for the `mariadb` jail (10.8.0.100). Run this ONCE,
-# after freebsd/mariadb/00-install.sh and after my.cnf has been installed to
-# /usr/local/etc/mysql/conf.d/azuracast.cnf.
+# One-time provisioning for the `mariadb` jail (MARIADB_JAIL_NAME in
+# env.conf). Run this ONCE, after freebsd/mariadb/00-install.sh and after
+# my.cnf has been installed to /usr/local/etc/mysql/conf.d/azuracast.cnf.
 #
 # It will:
 #   1. Run mysql_install_db (if the data directory doesn't exist yet).
 #   2. Start mariadb via service(8) and wait for the socket to come up.
-#   3. Create the `azuracast` database (utf8mb4 / utf8mb4_general_ci, matching
-#      util/docker/mariadb/mariadb/db.sql and backend/config/services.php).
-#   4. Create the `azuracast` DB user, scoped ONLY to
-#      'azuracast'@'10.8.0.110' (the webapp jail's IPv4 address) AND
-#      'azuracast'@'2001:8a0:6a32:2100::110' (the same jail's IPv6
-#      address, WEBAPP_JAIL_IP6 in env.conf) — NOT '%' and NOT
-#      'localhost'. MariaDB now binds both address families (see
-#      my.cnf.tmpl), so a webapp connecting over either IPv4 or IPv6
-#      needs a matching host-scoped grant to actually authenticate. Both
-#      grants share the same password (AZURACAST_DB_PASSWORD) — this is
-#      one logical user reachable from two addresses, not two users.
-#   5. GRANT that user privileges on `azuracast`.* only (both host forms).
+#   3. Create the database named by AZURACAST_DB_NAME (default
+#      AZURACAST_DB_NAME_DEFAULT in env.conf, "azuracast") with
+#      utf8mb4/utf8mb4_general_ci, matching util/docker/mariadb/mariadb/db.sql
+#      and backend/config/services.php.
+#   4. Create the DB user named by AZURACAST_DB_USER (default
+#      AZURACAST_DB_USER_DEFAULT in env.conf, "azuracast"), scoped ONLY to
+#      WEBAPP_JAIL_IP (the webapp jail's IPv4 address, from env.conf) AND
+#      WEBAPP_JAIL_IP6 (the same jail's IPv6 address, from env.conf) — NOT
+#      '%' and NOT 'localhost'. MariaDB binds both address families (see
+#      my.cnf.tmpl), so a webapp connecting over either IPv4 or IPv6 needs
+#      a matching host-scoped grant to actually authenticate. Both grants
+#      share the same password (AZURACAST_DB_PASSWORD) — this is one
+#      logical user reachable from two addresses, not two users.
+#   5. GRANT that user privileges on that database only (both host forms).
 #
 # --- Setting the DB password ------------------------------------------------
 # Do NOT hardcode a real password in this script. Set it via environment

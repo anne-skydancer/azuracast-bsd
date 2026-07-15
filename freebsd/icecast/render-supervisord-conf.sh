@@ -27,7 +27,7 @@
 #   sh freebsd/icecast/render-supervisord-conf.sh
 #
 #   # or, without an env file, pass everything as arguments:
-#   sh freebsd/icecast/render-supervisord-conf.sh 10.8.0.120 9002 azuracast 'a-strong-password'
+#   sh freebsd/icecast/render-supervisord-conf.sh <icecast-jail-ip> <supervisor-port> <supervisor-username> <supervisor-password>
 #
 # Writes freebsd/icecast/supervisord.conf (concrete, rendered,
 # .gitignore'd) -- copy that file to /usr/local/etc/supervisord.conf on

@@ -1,9 +1,9 @@
 # webapp jail (FreeBSD, native)
 
 This directory replaces AzuraCast's Dockerized web/app image with a
-native FreeBSD jail install. This jail (`webapp`, the value of
-`WEBAPP_JAIL_IP` in `freebsd/env.conf` (currently `10.8.0.110`) / the
-value of `WEBAPP_JAIL_HOSTNAME` (currently `webapp.amc202d.lan`)) runs
+native FreeBSD jail install. This jail (named by `WEBAPP_JAIL_NAME`,
+addressed by `WEBAPP_JAIL_IP`/`WEBAPP_JAIL_IP6`, and reachable at
+`WEBAPP_JAIL_HOSTNAME` — all set in `freebsd/env.conf`) runs
 nginx, php-fpm (PHP 8.5, matching the Docker build's `php:8.5-fpm-trixie`),
 Valkey, Centrifugo, SFTPGo, cron, and supervisord (which also manages
 the per-station stream-engine processes; those are generated
@@ -17,12 +17,11 @@ different layout (see `freebsd/README.md`).
 **MariaDB and Icecast are NOT set up by anything in this directory.**
 They run in their own separate jails:
 - MariaDB: `mariadb` jail, the value of `MARIADB_JAIL_IP` in
-  `freebsd/env.conf` (currently `10.8.0.100`) — see `freebsd/mariadb/`
-- Icecast: existing `icecast` jail
+  `freebsd/env.conf` — see `freebsd/mariadb/`
+- Icecast: your existing per-station Icecast jail(s)
 
 This jail only needs to be able to *reach* MariaDB over TCP at
-`MARIADB_JAIL_IP:MARIADB_PORT` (currently `10.8.0.100:3306`) — it does
-not install or manage it.
+`MARIADB_JAIL_IP:MARIADB_PORT` — it does not install or manage it.
 
 ## Files here
 
@@ -111,10 +110,9 @@ not install or manage it.
    Asks whether you already have a MariaDB/MySQL-compatible server set
    up. If yes, it prompts for that server's host/port/database/user/
    password directly. If no, it defaults to this project's documented
-   topology (the dedicated `mariadb` jail at `MARIADB_JAIL_IP:MARIADB_PORT`,
-   currently `10.8.0.100:3306` — see `freebsd/mariadb/README.md`) and only
-   prompts for the database name/
-   user/password, which it then reminds you to provision on that jail
+   topology (the dedicated `mariadb` jail at `MARIADB_JAIL_IP:MARIADB_PORT`
+   — see `freebsd/mariadb/README.md`) and only prompts for the database
+   name/user/password, which it then reminds you to provision on that jail
    with matching values. Either way it writes `MYSQL_*` into
    `<AZURACAST_PATH>/azuracast.env` (mode 600, `azuracast`-owned),
    which is the exact file `backend/src/Environment.php` reads —
@@ -188,10 +186,9 @@ REDIS_DB=0
 jail, not a separate one. If you chose the default topology in
 `configure-db.sh` (no existing server), `MYSQL_HOST` ends up as the
 separate `mariadb` jail (the value of `MARIADB_JAIL_IP` in
-`freebsd/env.conf`, currently `10.8.0.100`) — see
-`freebsd/mariadb/README.md` for how that user/grant was provisioned
-(scoped to `'azuracast'@'WEBAPP_JAIL_IP'`, i.e. the value of
-`WEBAPP_JAIL_IP` (currently `10.8.0.110`), this jail's IP).
+`freebsd/env.conf`) — see `freebsd/mariadb/README.md` for how that
+user/grant was provisioned (scoped to `'azuracast'@'WEBAPP_JAIL_IP'`,
+i.e. this jail's own IP, from `env.conf`).
 
 These are the same env var names AzuraCast's `backend/src/Environment.php`
 already reads — no application code changes are required, only values.

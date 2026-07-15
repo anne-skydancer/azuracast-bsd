@@ -3,10 +3,10 @@
 # freebsd/webapp/00-packages.sh
 #
 # Base package install + user/directory bootstrap for the `webapp` jail
-# (10.8.0.110 / webapp.amc202d.lan). This jail runs nginx, php-fpm,
-# Valkey, Centrifugo, SFTPGo, cron, and supervisord. It does NOT run
-# MariaDB (separate `mariadb` jail, 10.8.0.100) or Icecast
-# (separate `icecast` jail / out of scope here).
+# (WEBAPP_JAIL_IP/WEBAPP_JAIL_HOSTNAME in freebsd/env.conf). This jail runs
+# nginx, php-fpm, Valkey, Centrifugo, SFTPGo, cron, and supervisord. It does
+# NOT run MariaDB (separate `mariadb` jail, MARIADB_JAIL_IP in env.conf) or
+# Icecast (separate `icecast` jail / out of scope here).
 #
 # Source-of-truth notes (read before running):
 #

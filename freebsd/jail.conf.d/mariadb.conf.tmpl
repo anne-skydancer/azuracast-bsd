@@ -8,8 +8,8 @@
     exec.prestart  = "ifconfig @@MARIADB_JAIL_EPAIR@@ create";
     exec.prestart += "ifconfig @@VM_PUBLIC_BRIDGE@@ addm @@MARIADB_JAIL_EPAIR@@a";
     exec.prestart += "ifconfig @@MARIADB_JAIL_EPAIR@@a up";
-    exec.start    += "ifconfig @@MARIADB_JAIL_EPAIR@@b @@MARIADB_JAIL_IP@@/11 up";
-    exec.start    += "ifconfig @@MARIADB_JAIL_EPAIR@@b inet6 @@MARIADB_JAIL_IP6@@/64 up";
+    exec.start    += "ifconfig @@MARIADB_JAIL_EPAIR@@b @@MARIADB_JAIL_IP@@/@@MARIADB_JAIL_NETMASK@@ up";
+    exec.start    += "ifconfig @@MARIADB_JAIL_EPAIR@@b inet6 @@MARIADB_JAIL_IP6@@/@@MARIADB_JAIL_IP6_PREFIX@@ up";
     exec.start    += "route add default @@DEFAULT_ROUTE_V4@@";
     exec.start    += "route add -6 default @@DEFAULT_ROUTE_V6_GW@@%@@MARIADB_JAIL_EPAIR@@b";
     exec.start    += "/bin/sh /etc/rc";

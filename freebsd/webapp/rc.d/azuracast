@@ -19,8 +19,9 @@
 # already (see the ordering note at the top of that file) — so this
 # script only needs to replicate the two steps that MUST happen before
 # supervisord starts anything at all:
-#   1. Wait for MariaDB (10.8.0.100:3306, separate jail) to accept TCP
-#      connections — same purpose as Docker's `uptime_wait db`.
+#   1. Wait for MariaDB (MARIADB_JAIL_IP:MARIADB_PORT in freebsd/env.conf,
+#      separate jail) to accept TCP connections — same purpose as Docker's
+#      `uptime_wait db`.
 #   2. Run one-time setup / schema migrations — same purpose as
 #      Docker's `azuracast_cli azuracast:setup --init`.
 # Then it starts supervisord, which brings up nginx/php-fpm/centrifugo/
@@ -32,7 +33,7 @@
 # so set this to wherever `backend/bin/console` actually lives on this
 # jail before enabling the service, e.g. via /etc/rc.conf.d/azuracast:
 #   azuracast_path="/usr/local/www/azuracast"
-#   azuracast_db_host="10.8.0.100"
+#   azuracast_db_host="<value of MARIADB_JAIL_IP in freebsd/env.conf>"
 #
 # azuracast_db_host has NO built-in default and MUST be set via
 # /etc/rc.conf.d/azuracast (or `sysrc azuracast_db_host=...`) — this rc.d

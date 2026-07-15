@@ -49,9 +49,9 @@ final class RemoteSupervisorClientFactory
     /**
      * Formats a bare host for embedding in a `host:port` URI authority.
      *
-     * IPv6 literals (e.g. `2001:8a0:6a32:2100::100`) contain colons that are
+     * IPv6 literals (e.g. `2001:db8::1`) contain colons that are
      * ambiguous with the `:port` separator, so they must be wrapped in
-     * brackets (`[2001:8a0:6a32:2100::100]`) before being combined with a
+     * brackets (`[2001:db8::1]`) before being combined with a
      * port -- IPv4 addresses and hostnames are used as-is.
      */
     private static function formatHostForUri(string $host): string
