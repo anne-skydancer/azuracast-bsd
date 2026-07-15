@@ -36,12 +36,13 @@ Want to see AzuraCast for yourself? Visit our demo site at [demo.azuracast.com](
 
 ## Install AzuraCast
 
-To install AzuraCast, you should have a basic understanding of the Linux shell terminal. Once installed, every aspect of
-your radio station can be managed via AzuraCast's web interface.
+**This fork does not use Docker.** It installs directly into native FreeBSD jails, and replaces
+the upstream Liquidsoap (OCaml) streaming engine with a Rust engine (`engine/`). Upstream
+AzuraCast's own [installation guide](https://www.azuracast.com/docs/getting-started/installation/)
+describes the Docker-based install and does **not** apply here.
 
-Follow our **[installation guide](https://www.azuracast.com/docs/getting-started/installation/)** for instructions on
-how
-to install AzuraCast on your own server.
+Follow **[`INSTALL.md`](INSTALL.md)** in this repository for this fork's FreeBSD-jail installation
+steps.
 
 ## License
 
