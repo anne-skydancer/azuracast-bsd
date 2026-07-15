@@ -990,76 +990,6 @@ paths:
           $ref: '#/components/responses/RecordNotFound'
         '500':
           $ref: '#/components/responses/GenericError'
-  /admin/rsas:
-    get:
-      tags:
-        - 'Administration: General'
-      summary: 'Get the current Rocket Streaming Audio Server (RSAS) status.'
-      operationId: getRsas
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Api_Admin_RsasStatus'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    post:
-      tags:
-        - 'Administration: General'
-      summary: 'Upload a new Rocket Streaming Audio Server (RSAS) binary.'
-      operationId: postRsas
-      requestBody:
-        $ref: '#/components/requestBodies/FlowFileUpload'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    delete:
-      tags:
-        - 'Administration: General'
-      summary: 'Removes the Rocket Streaming Audio Server (RSAS) installation.'
-      operationId: deleteRsas
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  /admin/rsas/license:
-    post:
-      tags:
-        - 'Administration: General'
-      summary: 'Upload a new Rocket Streaming Audio Server (RSAS) license key.'
-      operationId: postRsasLicense
-      requestBody:
-        $ref: '#/components/requestBodies/FlowFileUpload'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    delete:
-      tags:
-        - 'Administration: General'
-      summary: 'Removes the Rocket Streaming Audio Server (RSAS) license.'
-      operationId: deleteRsasLicense
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
   /admin/send-test-message:
     post:
       tags:
@@ -1162,49 +1092,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/Settings'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
-  /admin/shoutcast:
-    get:
-      tags:
-        - 'Administration: General'
-      summary: 'Get details about the Shoutcast installation.'
-      operationId: getShoutcast
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Api_Admin_ShoutcastStatus'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    post:
-      tags:
-        - 'Administration: General'
-      summary: 'Upload a new Shoutcast binary.'
-      operationId: postShoutcast
-      requestBody:
-        $ref: '#/components/requestBodies/FlowFileUpload'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '403':
-          $ref: '#/components/responses/AccessDenied'
-        '500':
-          $ref: '#/components/responses/GenericError'
-    delete:
-      tags:
-        - 'Administration: General'
-      summary: 'Removes the installed Shoutcast binary.'
-      operationId: deleteShoutcast
       responses:
         '200':
           $ref: '#/components/responses/Success'
@@ -5303,7 +5190,7 @@ paths:
     post:
       tags:
         - 'Stations: Broadcasting'
-      summary: 'Perform service control actions on the radio frontend (Icecast, Shoutcast, etc.)'
+      summary: 'Perform service control actions on the radio frontend'
       operationId: doFrontendServiceAction
       parameters:
         -
@@ -6613,7 +6500,7 @@ components:
         type:
           description: 'Which broadcasting software (frontend) the station uses'
           type: string
-          example: shoutcast2
+          example: icecast
           nullable: true
         port:
           description: 'The port used by this station to serve its broadcasts.'
@@ -6681,17 +6568,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/StationPermissions'
-      type: object
-    Api_Admin_RsasStatus:
-      required:
-        - version
-        - hasLicense
-      properties:
-        version:
-          type: string
-          nullable: true
-        hasLicense:
-          type: boolean
       type: object
     Api_Admin_ServerStats_CpuStats:
       required:
@@ -6912,14 +6788,6 @@ components:
             running:
               type: boolean
           type: object
-    Api_Admin_ShoutcastStatus:
-      required:
-        - version
-      properties:
-        version:
-          type: string
-          nullable: true
-      type: object
     Api_Admin_StationLogList:
       required:
         - id
@@ -7061,8 +6929,6 @@ components:
       required:
         - timezones
         - countries
-        - isRsasInstalled
-        - isShoutcastInstalled
         - isStereoToolInstalled
       properties:
         timezones:
@@ -7073,10 +6939,6 @@ components:
           type: object
           additionalProperties:
             type: string
-        isRsasInstalled:
-          type: boolean
-        isShoutcastInstalled:
-          type: boolean
         isStereoToolInstalled:
           type: boolean
       type: object
@@ -7609,7 +7471,7 @@ components:
         frontend:
           description: 'Which broadcasting software (frontend) the station uses'
           type: string
-          example: shoutcast2
+          example: icecast
         backend:
           description: 'Which AutoDJ software (backend) the station uses'
           type: string
@@ -10398,13 +10260,9 @@ components:
       type: string
       enum:
         - icecast
-        - shoutcast2
-        - rsas
         - remote
       x-enumNames:
         - Icecast
-        - Shoutcast
-        - Rsas
         - Remote
     HlsStreamProfiles:
       type: string

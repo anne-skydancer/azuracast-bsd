@@ -62,8 +62,6 @@ export enum HlsStreamProfiles {
 
 export enum FrontendAdapters {
     Icecast = "icecast",
-    Shoutcast = "shoutcast2",
-    Rsas = "rsas",
     Remote = "remote",
 }
 
@@ -384,7 +382,7 @@ export interface ApiAdminRelay {
     genre?: string | null;
     /**
      * Which broadcasting software (frontend) the station uses
-     * @example "shoutcast2"
+     * @example "icecast"
      */
     type?: string | null;
     /**
@@ -423,11 +421,6 @@ export interface ApiAdminRoleStationPermission {
     /** The station ID. */
     id: number;
     permissions: StationPermissions[];
-}
-
-export interface ApiAdminRsasStatus {
-    version: string | null;
-    hasLicense: boolean;
 }
 
 export interface ApiAdminServerStatsCpuStats {
@@ -514,10 +507,6 @@ export type ApiAdminServiceData = HasLinks & {
     running: boolean;
 };
 
-export interface ApiAdminShoutcastStatus {
-    version: string | null;
-}
-
 export interface ApiAdminStationLogList {
     id: number;
     name: string;
@@ -594,8 +583,6 @@ export interface ApiAdminVueSettingsProps {
 export interface ApiAdminVueStationsFormProps {
     timezones: Record<string, string>;
     countries: Record<string, string>;
-    isRsasInstalled: boolean;
-    isShoutcastInstalled: boolean;
     isStereoToolInstalled: boolean;
 }
 
@@ -911,7 +898,7 @@ export interface ApiNowPlayingStation {
     description: string;
     /**
      * Which broadcasting software (frontend) the station uses
-     * @example "shoutcast2"
+     * @example "icecast"
      */
     frontend: string;
     /**

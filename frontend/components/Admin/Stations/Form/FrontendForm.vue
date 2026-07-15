@@ -17,25 +17,6 @@
         </div>
 
         <template v-if="isLocalFrontend">
-            <div
-                v-if="isShoutcastFrontend"
-                class="row g-3 mb-3"
-            >
-                <form-group-field
-                    id="edit_form_frontend_sc_license_id"
-                    class="col-md-6"
-                    :field="r$.frontend_config.sc_license_id"
-                    :label="$gettext('Shoutcast License ID')"
-                />
-
-                <form-group-field
-                    id="edit_form_frontend_sc_user_id"
-                    class="col-md-6"
-                    :field="r$.frontend_config.sc_user_id"
-                    :label="$gettext('Shoutcast User ID')"
-                />
-            </div>
-
             <div class="row g-3 mb-3">
                 <form-group-field
                     id="edit_form_frontend_source_pw"
@@ -80,14 +61,6 @@
                         :label="$gettext('Maximum Listeners')"
                         :description="$gettext('Maximum number of total listeners across all streams. Leave blank to use the default.')"
                     />
-                </div>
-
-                <div class="row g-3 mb-3">
-                    <div class="col">
-                        <info-card v-if="isShoutcastFrontend">
-                            {{ $gettext('The Shoutcast DNAS 2 frontend does not support the "Allowed IP Addresses" or "Banned Countries" options. These settings will be ignored for listeners through Shoutcast.') }}
-                        </info-card>
-                    </div>
                 </div>
 
                 <div class="row g-3 mb-3">
@@ -226,7 +199,6 @@
 import { storeToRefs } from "pinia";
 import { computed } from "vue";
 import { useAdminStationsForm } from "~/components/Admin/Stations/Form/form.ts";
-import InfoCard from "~/components/Common/InfoCard.vue";
 import Tab from "~/components/Common/Tab.vue";
 import FormFieldset from "~/components/Form/FormFieldset.vue";
 import FormGroupField from "~/components/Form/FormGroupField.vue";
@@ -238,8 +210,6 @@ import { useFormTabClass } from "~/functions/useFormTabClass.ts";
 import { useTranslate } from "~/vendor/gettext";
 
 const props = defineProps<{
-    isRsasInstalled: boolean;
-    isShoutcastInstalled: boolean;
     countries: Record<string, string>;
 }>();
 
@@ -257,22 +227,6 @@ const frontendTypeOptions = computed<SimpleFormOptionInput>(() => {
         },
     ];
 
-    if (props.isRsasInstalled) {
-        frontendOptions.push({
-            text: $gettext(
-                "Use Rocket Streaming Audio Server (RSAS) on this server.",
-            ),
-            value: FrontendAdapters.Rsas,
-        });
-    }
-
-    if (props.isShoutcastInstalled) {
-        frontendOptions.push({
-            text: $gettext("Use Shoutcast DNAS 2 on this server."),
-            value: FrontendAdapters.Shoutcast,
-        });
-    }
-
     frontendOptions.push({
         text: $gettext("Do not use a local broadcasting service."),
         value: FrontendAdapters.Remote,
@@ -283,10 +237,6 @@ const frontendTypeOptions = computed<SimpleFormOptionInput>(() => {
 
 const isLocalFrontend = computed(() => {
     return form.value.frontend_type !== FrontendAdapters.Remote;
-});
-
-const isShoutcastFrontend = computed(() => {
-    return form.value.frontend_type === FrontendAdapters.Shoutcast;
 });
 
 const isIcecastFrontend = computed(() => {

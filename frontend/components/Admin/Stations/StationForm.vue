@@ -17,8 +17,6 @@
                 />
 
                 <admin-stations-frontend-form
-                    :is-rsas-installed="isRsasInstalled"
-                    :is-shoutcast-installed="isShoutcastInstalled"
                     :countries="countries"
                 />
 
@@ -89,8 +87,6 @@ interface StationFormProps extends ApiAdminVueStationsFormProps {
 }
 
 const props = withDefaults(defineProps<StationFormProps>(), {
-    isRsasInstalled: false,
-    isShoutcastInstalled: false,
     isStereoToolInstalled: false,
     editUrl: null,
     isModal: false,

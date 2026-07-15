@@ -68,7 +68,6 @@ return static function (RouteCollectorProxy $app) {
                     $routes = [
                         'admin:index:index' => '',
                         'admin:debug:index' => '/debug',
-                        'admin:install_shoutcast:index' => '/install/shoutcast',
                         'admin:install_stereo_tool:index' => '/install/stereo_tool',
                         'admin:install_geolite:index' => '/install/geolite',
                         'admin:auditlog:index' => '/auditlog',

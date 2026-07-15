@@ -51,7 +51,7 @@ final class Relay
 
     #[OA\Property(
         description: 'Which broadcasting software (frontend) the station uses',
-        example: 'shoutcast2'
+        example: 'icecast'
     )]
     public ?string $type = null;
 

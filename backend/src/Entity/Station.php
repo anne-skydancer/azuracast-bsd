@@ -114,7 +114,7 @@ final class Station implements Stringable, IdentifiableEntityInterface
 
     #[
         OA\Property(
-            description: "The frontend adapter (icecast,shoutcast,remote,etc)",
+            description: "The frontend adapter (icecast, remote, etc)",
             example: "icecast"
         ),
         ORM\Column(type: 'string', length: 100, enumType: FrontendAdapters::class),

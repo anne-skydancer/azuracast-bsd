@@ -56,7 +56,7 @@ use Psr\Http\Message\ResponseInterface;
     OA\Post(
         path: '/station/{station_id}/frontend/{action}',
         operationId: 'doFrontendServiceAction',
-        summary: 'Perform service control actions on the radio frontend (Icecast, Shoutcast, etc.)',
+        summary: 'Perform service control actions on the radio frontend',
         tags: [OpenApi::TAG_STATIONS_BROADCASTING],
         parameters: [
             new OA\Parameter(ref: OpenApi::REF_STATION_ID_REQUIRED),

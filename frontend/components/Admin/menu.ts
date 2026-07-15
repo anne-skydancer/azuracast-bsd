@@ -152,22 +152,6 @@ export function useAdminMenu() {
             icon: () => IconIcWidgets,
             items: [
                 {
-                    key: "shoutcast",
-                    label: $gettext("Shoutcast 2 DNAS"),
-                    url: {
-                        name: "admin:install_shoutcast:index",
-                    },
-                    visible: () => userAllowed(GlobalPermissions.Settings),
-                },
-                {
-                    key: "rsas",
-                    label: $gettext("Rocket Streaming Audio Server (RSAS)"),
-                    url: {
-                        name: "admin:install_rsas:index",
-                    },
-                    visible: () => userAllowed(GlobalPermissions.Settings),
-                },
-                {
                     key: "stereo_tool",
                     label: $gettext("Stereo Tool"),
                     url: {

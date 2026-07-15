@@ -69,27 +69,6 @@
                 :description="$gettext('Set the length of time (seconds) a listener will stay connected to the stream. If set to 0, listeners can stay connected infinitely.')"
             />
 
-            <template v-if="isShoutcast">
-                <form-group-field
-                    id="edit_form_authhash"
-                    class="col-md-6"
-                    :field="r$.authhash"
-                    :label="$gettext('YP Directory Authorization Hash')"
-                >
-                    <template #description>
-                        {{
-                            $gettext('If your stream is set to advertise to YP directories above, you must specify an authorization hash. You can manage these on the Shoutcast web site.')
-                        }}
-                        <br>
-                        <a
-                            href="https://radiomanager.shoutcast.com/"
-                            target="_blank"
-                        >
-                            {{ $gettext('Shoutcast Radio Manager') }}
-                        </a>
-                    </template>
-                </form-group-field>
-            </template>
             <template v-if="isIcecast">
                 <form-group-field
                     id="edit_form_fallback_mount"
@@ -123,9 +102,5 @@ const tabClass = useFormTabClass(computed(() => r$.value.$groups.basicInfoTab));
 
 const isIcecast = computed(() => {
     return FrontendAdapters.Icecast === props.stationFrontendType;
-});
-
-const isShoutcast = computed(() => {
-    return FrontendAdapters.Shoutcast === props.stationFrontendType;
 });
 </script>

@@ -358,10 +358,11 @@ over a `tokio::sync::broadcast` channel (`main.rs` constructs it and hands a `Se
 skips forward to newer audio (logged) rather than blocking the pipeline or any other output task.
 
 **Explicitly out of scope / deferred** (see "Known follow-ups" below for the complete list):
-HLS output (`engine/SPEC.md` B.8), legacy Shoutcast/RSAS protocols for `[[remotes]]` (only
-`protocol = "icecast"` is handled — any other value is logged and that single remote is skipped,
-not a fatal config error), `share_encoders`, and mid-stream ICY metadata updates pushed over an
-already-open source connection.
+legacy Shoutcast/RSAS protocols for `[[remotes]]` (only `protocol = "icecast"` is handled — any
+other value is logged and that single remote is skipped, not a fatal config error),
+`share_encoders`, and mid-stream ICY metadata updates pushed over an already-open source
+connection. HLS output (`engine/SPEC.md` B.8) was also originally deferred here but is now
+implemented -- see `hls.rs`.
 
 ## Files
 

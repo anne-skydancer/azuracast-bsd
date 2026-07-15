@@ -93,16 +93,6 @@ export default function useAdminRoutes(): RouteRecordRaw[] {
                     name: "admin:relays:index",
                 },
                 {
-                    path: "install_shoutcast",
-                    component: () => import("~/components/Admin/Shoutcast.vue"),
-                    name: "admin:install_shoutcast:index",
-                },
-                {
-                    path: "install_rsas",
-                    component: () => import("~/components/Admin/Rsas.vue"),
-                    name: "admin:install_rsas:index",
-                },
-                {
                     path: "install_stereo_tool",
                     component: () =>
                         import("~/components/Admin/StereoTool.vue"),
