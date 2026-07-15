@@ -50,7 +50,10 @@ anything else in either subdirectory.
 4. Deploy the AzuraCast PHP application itself into `webapp` (git
    clone/composer install/frontend build) — this isn't covered by
    either subdirectory, which only set up the surrounding OS-level
-   platform, not the app deployment step.
+   platform, not the app deployment step. Then build and install the
+   Rust streaming engine binary via `freebsd/webapp/build-engine.sh`
+   (see `freebsd/webapp/README.md`'s setup order, step 9) — without
+   this, no station can actually start.
 5. Confirm `webapp` can reach `mariadb` on port 3306. Restricting network
    access beyond that (via `pf` or otherwise) is your own firewall
    policy to set up if you want it — out of scope for this project,

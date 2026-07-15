@@ -40,6 +40,7 @@ not install or manage it.
 | `sftpgo.json` | Adapted SFTPGo config — install to `/var/azuracast/sftpgo/sftpgo.json`. |
 | `valkey.conf` | Valkey config, scoped to IPv4 + IPv6 loopback + unix socket — install to `/usr/local/etc/valkey.conf` (or wherever the package's `valkey_config` rcvar points). |
 | `configure-db.sh` | Interactive first-install script: asks whether you have an existing DB server or want the default `mariadb` jail, then writes `MYSQL_*` into `azuracast.env`. |
+| `build-engine.sh` | Builds `engine/` (the Rust streaming engine) from the deployed app checkout and installs the binary to `/usr/local/bin/azuracast-engine`. Re-run after any `git pull` that touches `engine/`. |
 
 ## Setup order
 
@@ -120,9 +121,22 @@ not install or manage it.
    confirm that file is `.gitignore`d wherever the app is deployed from,
    since it now holds a real password.
 
-9. Start everything: `service azuracast start`
-   (this waits for MariaDB, runs `azuracast:setup --init`, then starts
-   supervisord, which brings up nginx/php-fpm/centrifugo/sftpgo).
+9. Build and install the streaming engine binary:
+   ```sh
+   export AZURACAST_PATH=/usr/local/www/azuracast   # same as step 8
+   sh freebsd/webapp/build-engine.sh
+   ```
+   Installs a Rust toolchain (`pkg install rust`) if `cargo` isn't already
+   present, builds `engine/` in release mode, and installs the resulting
+   binary to `/usr/local/bin/azuracast-engine` — the exact path
+   `StreamEngine::getBinary()` expects. Without this step, stations using
+   the `stream_engine` backend (the only backend this fork supports) will
+   fail to start, since supervisord will try to exec a binary that doesn't
+   exist yet. Re-run this step after any `git pull` that touches `engine/`.
+
+10. Start everything: `service azuracast start`
+    (this waits for MariaDB, runs `azuracast:setup --init`, then starts
+    supervisord, which brings up nginx/php-fpm/centrifugo/sftpgo).
 
 ### Valkey
 

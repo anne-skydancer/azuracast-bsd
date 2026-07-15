@@ -61,6 +61,12 @@
 #     is a *data* download, not a package, and isn't handled by any
 #     script here. See freebsd/webapp/README.md for the manual/cron
 #     follow-up.
+#
+#   - `node22`/`npm-node22`: matches `.github/workflows/default.yml`'s
+#     `node-version: "lts/jod"` (Node 22 LTS, codename "Jod"). Verified
+#     against FreshPorts (2026-07): `www/node22` is real (22.23.1) but does
+#     NOT bundle npm -- its own pkg-message says to install `www/npm-node22`
+#     separately, so both are listed below.
 
 set -e
 
@@ -88,7 +94,9 @@ pkg install -y \
     sudo \
     openssl \
     zstd \
-    tmpreaper
+    tmpreaper \
+    node22 \
+    npm-node22
 
 # Enable FFI at the php.ini level (mirrors php.sh's
 # `echo 'ffi.enable="true"' >> /usr/local/etc/php/conf.d/ffi.ini`).
@@ -125,7 +133,6 @@ mkdir -p /var/azuracast/www /var/azuracast/stations /var/azuracast/www_tmp \
     /var/azuracast/sftpgo/backups \
     /var/azuracast/sftpgo/env.d \
     /var/azuracast/storage/uploads \
-    /var/azuracast/storage/shoutcast2 \
     /var/azuracast/storage/stereo_tool \
     /var/azuracast/storage/geoip \
     /var/azuracast/storage/sftpgo \
