@@ -19,6 +19,10 @@
 #     jail boot with no rc.local hackery. Its default config path is
 #     /usr/local/etc/supervisord.conf -- exactly where README.md's apply
 #     procedure installs the rendered template, so no extra rcvar needed.
+#     (sysutils/py-supervisor is a per-Python-flavor port; py312-supervisor
+#     below matches the current default Python -- confirmed on a real
+#     install 2026-07. Adjust the flavor prefix if your ports snapshot's
+#     default Python differs: `pkg search supervisor` shows what's current.)
 #   - The webapp jail does NOT want that service: its own rc.d/azuracast
 #     owns supervisord's start there (MariaDB-wait + migrations first),
 #     and an independently-enabled supervisord service alongside it means
@@ -32,7 +36,7 @@
 
 set -e
 
-pkg install -y py311-supervisor
+pkg install -y py312-supervisor
 
 sysrc supervisord_enable=YES
 
