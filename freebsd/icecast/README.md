@@ -44,6 +44,7 @@ of that URL, listening on the station's Icecast jail.
 | `supervisord.conf.tmpl` | Template (mirroring `freebsd/webapp/supervisord.conf`'s structure) with a new `[inet_http_server]` section for remote management, plus `[unix_http_server]`, `[supervisord]`, `[rpcinterface:supervisor]`, `[supervisorctl]`, and an `[include]` for this station's frontend program stanza. No `[program:icecast]` stanza — see "What this template deliberately does not contain" below. |
 | `icecast.env.example` | Tracked placeholder for the per-jail values `render-supervisord-conf.sh` needs (IP, port, username, password). Copy to `icecast.env` and fill in real values per jail — `icecast.env` itself is `.gitignore`d. |
 | `render-supervisord-conf.sh` | Renders `supervisord.conf.tmpl` into a concrete `supervisord.conf`, substituting `@@TOKEN@@` placeholders via `sed` (same mechanism `freebsd/mariadb/00-install.sh` uses for `my.cnf.tmpl`). |
+| `watchdog.sh` | Wedge watchdog: probes Icecast's HTTP side every minute from cron and restarts the frontend program via supervisord after two consecutive failures. Exists because the FreeBSD port's Icecast 2.5 beta was observed (twice, on a real install) freezing its request pipeline while the process stayed alive — a state supervisord's autorestart cannot detect. See the file's header comment for install instructions. |
 
 ## Applying this template to an existing Icecast jail
 
@@ -127,7 +128,39 @@ but every step applies verbatim to any other station's Icecast jail
    to build the remote client — get them to match exactly or AzuraCast
    won't be able to reach this jail's supervisord.
 
-Repeat steps 1–7 (with a different `icecast.env`, or different CLI args)
+8. **Install the wedge watchdog** (recommended while the jail runs the
+   Icecast 2.5 beta — see the "Files here" table):
+
+   ```sh
+   # host-side copy into the jail, then wire up cron inside it:
+   cp freebsd/icecast/watchdog.sh <jail-path>/usr/local/sbin/icecast-watchdog
+   jexec <jail> chmod 555 /usr/local/sbin/icecast-watchdog
+   jexec <jail> sh -c 'echo "* * * * * /usr/local/sbin/icecast-watchdog >> /var/log/azuracast/watchdog.log 2>&1" | crontab -'
+   ```
+
+   (Adjust `WATCHDOG_PROGRAM`/`WATCHDOG_URL` inside the script — or via
+   cron environment lines — if the station id isn't 1 or the port isn't
+   8000. If the jail already has a root crontab, append rather than
+   replace: `crontab -l | { cat; echo "..."; } | crontab -`.)
+
+9. **Share the ACME certificates into this jail** (optional but
+   recommended once a real certificate exists): AzuraCast's generated
+   `icecast.xml` points `ssl-certificate` at
+   `/var/azuracast/storage/acme/ssl.crt`, which lives in the **webapp**
+   jail — invisible here, producing "Invalid cert file" warnings at
+   every start/reload (and failing TLS-context creation was in the mix
+   during one observed 2.5-beta wedge). Mount it read-only, same
+   identical-path convention as the station-config mount:
+
+   ```
+   mount += "<webapp-jail-path>/var/azuracast/storage/acme /jails/radio/<station-jail>/var/azuracast/storage/acme nullfs ro 0 0";
+   ```
+
+   plus `mkdir -p` of the target directory before the jail's next start.
+   Read-only: certificate issuance/renewal happens on the webapp side;
+   this jail only ever reads.
+
+Repeat steps 1–9 (with a different `icecast.env`, or different CLI args)
 for every additional station's Icecast jail.
 
 ## What this template deliberately does not contain
