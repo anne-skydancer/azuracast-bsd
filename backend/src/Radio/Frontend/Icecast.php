@@ -216,16 +216,17 @@ class Icecast extends AbstractFrontend
             // expressed through <clients> instead of KH's <max-listeners>.
             'limits' => [
                 'clients' => !empty($frontendConfig->max_listeners) ? $frontendConfig->max_listeners * 2 : 2500,
-                // Twice the mount count plus slack, NOT the exact count: a
-                // source slot can be briefly (or, in the 2.5 beta after an
-                // abrupt source death, indefinitely) occupied by a
-                // connection that is already dead but not yet reaped. With
-                // an exact limit, the engine's 5s-backoff reconnect gets
-                // "maximum source limit reached" forever and the station
-                // sits on its fallback until a human restarts the frontend
-                // (observed on a real install). Sources still authenticate;
-                // this limit is anti-flood, not access control.
-                'sources' => $station->mounts->count() * 2 + 2,
+                // Generous headroom, NOT the exact mount count: a source
+                // slot can be briefly (or, in the 2.5 beta after an abrupt
+                // source death, indefinitely) occupied by a connection that
+                // is already dead but not yet reaped. With an exact limit,
+                // the engine's 5s-backoff reconnect gets "maximum source
+                // limit reached" forever and the station sits on its
+                // fallback until a human restarts the frontend (observed on
+                // a real install). Floor of 8, scaling up for many-mount
+                // stations; sources still authenticate, this limit is
+                // anti-flood, not access control.
+                'sources' => max(8, $station->mounts->count() * 2 + 2),
                 // queue-size/burst-size raised from the inherited
                 // 524288/65535: burst-size is the ready-made head start a
                 // NEW listener receives instantly, and 64KB is only ~1.6s
