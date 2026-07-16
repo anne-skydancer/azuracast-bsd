@@ -103,11 +103,17 @@ but every step applies verbatim to any other station's Icecast jail
    or its `[include]` glob will just match nothing until the mount and
    the first `writeConfiguration()` call both exist.
 
-6. **Start supervisord in the jail** (however you prefer to run it at
-   jail boot — this template doesn't ship an rc.d script, since unlike
-   `webapp`'s `rc.d/azuracast` there's no MariaDB-wait/migration
-   sequencing needed here; a plain `supervisord -c
-   /usr/local/etc/supervisord.conf` or your own rc.d wrapper is enough).
+6. **Start supervisord in the jail.** `00-install-supervisor.sh` installs
+   the FreeBSD port (`py311-supervisor`), which ships a native rc.d
+   service, and enables it (`sysrc supervisord_enable=YES`) — so:
+
+   ```sh
+   service supervisord start   # inside the jail
+   ```
+
+   and it starts automatically on every jail boot thereafter. (The port's
+   rc.d default config path is `/usr/local/etc/supervisord.conf`, exactly
+   where step 4 installed the rendered file — no extra rcvar needed.)
 
 7. **Point the station at it**, in the AzuraCast admin UI (webapp jail),
    on this station's frontend config:
@@ -233,11 +239,16 @@ Notes on the exact paths above:
   `00-install-supervisor.sh` leaves `/var/log/azuracast` root-owned by
   default rather than assuming that user exists here — adjust by hand if
   your Icecast jail happens to already have a matching user/group.
-- **No rc.d script shipped.** `webapp/rc.d/azuracast` exists because that
-  jail needs MariaDB-wait + one-time migrations before starting
-  supervisord; nothing analogous applies to an Icecast jail, so starting
-  supervisord here (at boot or otherwise) is left to however you already
-  manage this jail's startup.
+- **rc.d comes from the port, not this template.** `00-install-supervisor.sh`
+  installs `py311-supervisor` from ports specifically because it ships a
+  native `rc.d/supervisord` service (enabled by the script via
+  `sysrc supervisord_enable=YES`). This deliberately differs from
+  `webapp/20-supervisor.sh`'s pip install: the webapp jail must NOT have
+  an independently-enabled supervisord service, because its own
+  `rc.d/azuracast` owns supervisord's lifecycle there (MariaDB-wait +
+  migrations first) — two services starting the same supervisord means
+  two instances fighting over the same programs, a failure mode confirmed
+  on a real install.
 - **This was not tested against a real jail** as part of this change —
   same caveat as the rest of `freebsd/` (see `freebsd/README.md`'s "Known
   open items"). Treat this as a carefully reviewed first draft, checked

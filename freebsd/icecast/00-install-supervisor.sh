@@ -10,33 +10,31 @@
 # station's Icecast jail you're applying this template to -- see
 # README.md in this directory for the full apply procedure.
 #
-# Mirrors freebsd/webapp/20-supervisor.sh's installation method exactly
-# (pip install supervisor), for consistency across the whole freebsd/ tree.
-# See that file's header comment for the full Option A/B rationale:
+# Unlike freebsd/webapp/20-supervisor.sh (which uses `pip install
+# supervisor` to mirror Docker's own supervisor.sh), this installs the
+# FreeBSD PORT (sysutils/py-supervisor) instead -- deliberately:
 #
-# Option A (used below): pip install supervisor.
-#   Docker's own util/docker/supervisor/setup/supervisor.sh does exactly
-#   this (`pip3 install --no-cache-dir --break-system-packages
-#   setuptools supervisor git+https://.../supervisor-stdout`), so this
-#   mirrors it most faithfully. Requires py-pip.
+#   - The port ships a native rc.d service (/usr/local/etc/rc.d/supervisord,
+#     enabled via `sysrc supervisord_enable=YES`), so supervisord starts at
+#     jail boot with no rc.local hackery. Its default config path is
+#     /usr/local/etc/supervisord.conf -- exactly where README.md's apply
+#     procedure installs the rendered template, so no extra rcvar needed.
+#   - The webapp jail does NOT want that service: its own rc.d/azuracast
+#     owns supervisord's start there (MariaDB-wait + migrations first),
+#     and an independently-enabled supervisord service alongside it means
+#     two supervisords fighting over the same programs -- a failure mode
+#     confirmed the hard way on a real install. Hence the two jails'
+#     install scripts intentionally differ.
 #
-# Option B (alternative, not used below): `pkg install -y py311-supervisor`
-#   FreeBSD ports carries supervisor as a per-Python-version port
-#   (sysutils/py-supervisor, generated as e.g. py311-supervisor). This
-#   avoids pip entirely if you'd rather stay on pure pkg. Swap the pip
-#   install line below for this if preferred -- not verified against a
-#   specific Python/FreeBSD-release combination as part of this change.
+# If this jail previously had the pip-installed supervisor (an earlier
+# revision of this script), remove it first so the port's files win:
+#   python3.11 -m pip uninstall -y supervisor
 
 set -e
 
-pkg install -y python311 py311-pip
+pkg install -y py311-supervisor
 
-python3.11 -m pip install --no-cache-dir supervisor
-
-# supervisor-stdout is omitted here for the same reason webapp/
-# 20-supervisor.sh omits it: meaningless outside a container, and this
-# jail's Icecast process already presumably logs to its own file(s) (see
-# README.md's "Shared mount" section for where those land).
+sysrc supervisord_enable=YES
 
 mkdir -p /usr/local/etc/supervisor.d
 mkdir -p /var/log/azuracast
