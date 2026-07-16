@@ -35,8 +35,6 @@ use crate::config::CallbacksConfig;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 /// `auth` uses its own fixed 5s timeout (D.2), distinct from the general default.
 const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
-/// `savecache` also uses a fixed 5s timeout (D.7).
-const SAVECACHE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NextSongResponse {
@@ -191,17 +189,12 @@ impl CallbackClient {
             .map_err(|e| format!("failed to parse cp response: {e} (body: {resp_body})"))
     }
 
-    /// D.7 `savecache` — payload `{"cache_key": ..., "data": {...}}`,
-    /// fixed 5s timeout, fire-and-forget from the `.liq` caller.
-    pub async fn call_savecache(
-        &self,
-        cache_key: &str,
-        data: serde_json::Value,
-    ) -> Result<bool, String> {
-        let body = serde_json::to_string(&json!({ "cache_key": cache_key, "data": data }))
-            .map_err(|e| e.to_string())?;
-        let resp_body = self.post("savecache", body, SAVECACHE_TIMEOUT).await?;
-        serde_json::from_str(&resp_body)
-            .map_err(|e| format!("failed to parse savecache response: {e} (body: {resp_body})"))
-    }
+    // D.7 `savecache` (payload `{"cache_key": ..., "data": {...}}`, fixed
+    // 5s timeout) is deliberately NOT implemented here yet: Liquidsoap
+    // called it to persist autocue analysis results, and this engine has
+    // no autocue cache to persist. The PHP-side handler
+    // (EngineCommands::SaveCache -> SaveCacheCommand) exists and works --
+    // re-add a `call_savecache` client method alongside the autocue
+    // implementation when that feature lands, rather than carrying dead
+    // code (and its compiler warnings) in the meantime.
 }
