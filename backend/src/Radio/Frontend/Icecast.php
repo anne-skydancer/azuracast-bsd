@@ -191,9 +191,15 @@ class Icecast extends AbstractFrontend
         $settingsBaseUrl = $this->settingsRepo->readSettings()->getBaseUrlAsUri();
         $baseUrl = $settingsBaseUrl ?? new Uri('http://localhost');
 
-        // Only the certificate path is used: stock Icecast has no separate
-        // key element (KH's ssl-private-key), see the config-array note below.
-        [$certPath] = Acme::getCertificatePaths();
+        // Stock Icecast has no separate key element (KH's ssl-private-key),
+        // and reads certificate AND key from the single ssl-certificate
+        // file -- so a combined cert+key PEM is maintained alongside the
+        // separate pair nginx uses (see Acme::writeCombinedPem, which also
+        // refreshes it on cert renewal). Falls back to the bare cert path
+        // when no certificate exists yet: same warn-and-continue Icecast
+        // behavior as a missing combined file, just with an honest path in
+        // the config.
+        $certPath = Acme::writeCombinedPem() ?? Acme::getCertificatePaths()[0];
 
         $config = [
             'location' => 'AzuraCast',
@@ -254,14 +260,18 @@ class Icecast extends AbstractFrontend
                         '@dest' => '/status.xsl',
                     ],
                 ],
-                // Stock Icecast 2.4/2.5 reads the certificate (cert+key
-                // combined, or cert with the key alongside via compat
-                // handling) from ssl-certificate; KH's separate
-                // ssl-private-key element does not exist in stock and is
-                // omitted (see the note atop this array). 2.5 flags these
-                // two as obsolete in favor of <tls-context>, but still
-                // honors them; the tls-context migration is deferred until
-                // its schema is verified against the running port.
+                // Stock Icecast reads certificate AND private key from this
+                // ONE file -- there is no "key alongside" compat handling
+                // (disproven on a real install: handing it the bare ssl.crt
+                // logs "WARN tls/tls_ctx_new Invalid private key file" on
+                // every start and native TLS silently stays off). Hence
+                // $certPath is the combined cert+key PEM maintained by
+                // Acme::writeCombinedPem. KH's separate ssl-private-key
+                // element does not exist in stock and is omitted (see the
+                // note atop this array). 2.5 flags these two elements as
+                // obsolete in favor of <tls-context>, but still honors
+                // them; the tls-context migration is deferred until its
+                // schema is verified against the running port.
                 'ssl-certificate' => $certPath,
                 // phpcs:disable Generic.Files.LineLength
                 'ssl-allowed-ciphers' => 'ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:RSA+AESGCM:RSA+AES:!aNULL:!MD5:!DSS',

@@ -40,6 +40,17 @@ set -e
 
 pkg install -y py312-supervisor
 
+# Stock Icecast looks for /etc/mime.types at startup and logs
+# "WARN fserve/fserve_recheck_mime_types Cannot open mime types file"
+# on every start when it's absent (confirmed on a real install) --
+# cosmetic, but noisy. FreeBSD ships the file at
+# /usr/local/etc/mime.types via misc/mime-support; install it and link
+# the path Icecast expects.
+pkg install -y mime-support
+if [ ! -e /etc/mime.types ]; then
+    ln -s /usr/local/etc/mime.types /etc/mime.types
+fi
+
 sysrc supervisord_enable=YES
 
 mkdir -p /usr/local/etc/supervisor.d

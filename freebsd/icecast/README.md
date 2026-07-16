@@ -146,11 +146,16 @@ but every step applies verbatim to any other station's Icecast jail
 9. **Share the ACME certificates into this jail** (optional but
    recommended once a real certificate exists): AzuraCast's generated
    `icecast.xml` points `ssl-certificate` at
-   `/var/azuracast/storage/acme/ssl.crt`, which lives in the **webapp**
-   jail — invisible here, producing "Invalid cert file" warnings at
-   every start/reload (and failing TLS-context creation was in the mix
-   during one observed 2.5-beta wedge). Mount it read-only, same
-   identical-path convention as the station-config mount:
+   `/var/azuracast/storage/acme/ssl_combined.pem` — a cert+key PEM the
+   PHP side maintains (`Acme::writeCombinedPem`), because stock Icecast
+   reads certificate AND key from that single file (handing it the bare
+   `ssl.crt` logs "Invalid private key file" and native TLS silently
+   stays off — confirmed on a real install). The file lives in the
+   **webapp** jail — invisible here without the mount, producing cert
+   warnings at every start/reload (and failing TLS-context creation was
+   in the mix during one observed 2.5-beta wedge). Mount the acme
+   directory read-only, same identical-path convention as the
+   station-config mount:
 
    ```
    mount += "<webapp-jail-path>/var/azuracast/storage/acme /jails/radio/<station-jail>/var/azuracast/storage/acme nullfs ro 0 0";

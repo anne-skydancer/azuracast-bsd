@@ -184,6 +184,10 @@ final class Acme
             $fs->readlink($acmeDir . '/ssl.crt', true) === $acmeDir . '/acme.crt'
             && $fs->readlink($acmeDir . '/ssl.key', true) === $acmeDir . '/acme.key'
         ) {
+            // Links are current; still refresh the combined PEM (content
+            // comparison inside makes this a no-op when nothing changed),
+            // so a renewal that reused existing links can't leave it stale.
+            self::writeCombinedPem();
             return true;
         }
 
@@ -194,6 +198,8 @@ final class Acme
 
         $fs->symlink($acmeDir . '/acme.crt', $acmeDir . '/ssl.crt');
         $fs->symlink($acmeDir . '/acme.key', $acmeDir . '/ssl.key');
+
+        self::writeCombinedPem();
 
         return false;
     }
@@ -241,5 +247,50 @@ final class Acme
             $acmeDir . '/ssl.crt',
             $acmeDir . '/ssl.key',
         ];
+    }
+
+    public static function getCombinedPemPath(): string
+    {
+        return self::getAcmeDirectory() . '/ssl_combined.pem';
+    }
+
+    /**
+     * Write (or refresh) the combined certificate+key PEM for services that
+     * read both from a single file -- stock Icecast's ssl-certificate
+     * element in particular, which has no separate key element (that was an
+     * Icecast-KH extension) and logs "Invalid private key file" when handed
+     * a certificate-only file (confirmed on a real install). nginx keeps
+     * using the separate ssl.crt/ssl.key pair.
+     *
+     * Returns the combined file's path when a certificate pair exists (the
+     * file is only rewritten when its content is actually out of date), or
+     * null when there is no certificate to combine.
+     */
+    public static function writeCombinedPem(): ?string
+    {
+        [$certPath, $keyPath] = self::getCertificatePaths();
+        if (!is_file($certPath) || !is_file($keyPath)) {
+            return null;
+        }
+
+        $cert = file_get_contents($certPath);
+        $key = file_get_contents($keyPath);
+        if (false === $cert || false === $key) {
+            return null;
+        }
+
+        $combined = rtrim($cert, "\r\n") . "\n" . rtrim($key, "\r\n") . "\n";
+        $combinedPath = self::getCombinedPemPath();
+
+        if (!is_file($combinedPath) || file_get_contents($combinedPath) !== $combined) {
+            file_put_contents($combinedPath, $combined);
+        }
+
+        // Key material: owner-only. The Icecast jail reads this through the
+        // read-only acme nullfs mount as the same numeric uid (1001), so
+        // owner-read is sufficient there too.
+        @chmod($combinedPath, 0600);
+
+        return $combinedPath;
     }
 }
