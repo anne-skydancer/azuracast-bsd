@@ -31,8 +31,10 @@
 #     install scripts intentionally differ.
 #
 # If this jail previously had the pip-installed supervisor (an earlier
-# revision of this script), remove it first so the port's files win:
-#   python3.11 -m pip uninstall -y supervisor
+# revision of this script), remove it first so the port's files win --
+# using whichever python the old install ran under (`head -1
+# /usr/local/bin/supervisord` shows it in the shebang):
+#   python3.12 -m pip uninstall -y supervisor
 
 set -e
 
