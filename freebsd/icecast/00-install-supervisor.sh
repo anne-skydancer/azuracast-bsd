@@ -55,9 +55,20 @@ mkdir -p /var/run
 # because Icecast reads its config from -- and writes its pidfile/logs
 # into -- the station config directory nullfs-mounted from the webapp
 # jail, where everything is owned by that numeric uid.
+#
+# `-o` (allow non-unique uid) is load-bearing: a real Icecast jail very
+# likely already has uid 1001 allocated -- confirmed on a real install,
+# where the icecast package's own service user held icecast:1001. The
+# name `azuracast` then becomes an alias for the same numeric uid, which
+# is exactly what's needed (supervisord resolves the NAME, the nullfs
+# mount cares about the NUMBER). The group likewise reuses gid 1001
+# under whatever name already owns it, creating it only if genuinely
+# absent.
 if ! pw usershow azuracast >/dev/null 2>&1; then
-    pw groupadd azuracast -g 1001
-    pw useradd azuracast -u 1001 -g 1001 -d /nonexistent -s /usr/sbin/nologin -c "AzuraCast"
+    if ! pw groupshow -g 1001 >/dev/null 2>&1; then
+        pw groupadd azuracast -g 1001
+    fi
+    pw useradd azuracast -u 1001 -o -g 1001 -d /nonexistent -s /usr/sbin/nologin -c "AzuraCast"
 fi
 
 # JUDGMENT CALL: unlike freebsd/webapp/20-supervisor.sh (which chowns this
