@@ -101,6 +101,16 @@ final class ServiceControl
             unset($services['redis']);
         }
 
+        // Outside Docker (i.e. the FreeBSD jail deployment), cron and
+        // Valkey/Redis run as native OS services (cron(8), rc.d valkey)
+        // rather than supervisord programs, so the supervisord-backed
+        // health check and restart controls cannot see or manage them.
+        // Listing them here would permanently flag healthy services as
+        // "Not Running" on the admin dashboard.
+        if (!$this->environment->isDocker()) {
+            unset($services['cron'], $services['redis']);
+        }
+
         if (!$this->environment->isDevelopment()) {
             unset($services['vite']);
         }
