@@ -154,23 +154,19 @@ impl Pipeline {
             tap: self.audio_tap.clone(),
         };
 
-        let mut current = autodj::fetch_next_track(
-            &self.client,
-            &self.queues,
-            Some(self.live.as_ref()),
-            self.replaygain_enabled,
-            self.fallback_file_path.as_deref(),
-        )
-        .await;
-        self.feedback.maybe_send(&self.client, &current).await;
-        let mut played_frames = 0usize;
-
         // Phase 6: real-time wall-clock pacing state for output emission --
         // see this file's module doc and `StreamClock`'s doc. One shared
         // clock for the whole loop lifetime (not reset per-track or at
         // live/AutoDJ transitions), so playback stays continuous/monotonic
-        // across every boundary.
+        // across every boundary. Created BEFORE the first fetch so the
+        // gapless fetch below can pump paced silence from t=0 -- the
+        // startup resolve/decode gap is subject to the same Icecast
+        // source-timeout as every track-boundary gap.
         let mut clock = StreamClock::new(tokio::time::Instant::now());
+
+        let mut current = self.fetch_next_gapless(&mut output, &mut clock).await;
+        self.feedback.maybe_send(&self.client, &current).await;
+        let mut played_frames = 0usize;
 
         loop {
             // `/metadata` (SPEC.md C.9's `insert_metadata`): apply any
@@ -218,6 +214,85 @@ impl Pipeline {
         }
     }
 
+    /// Fetches the next track on a detached task while pumping paced
+    /// silence chunks into the output, so the source connection to Icecast
+    /// never goes idle during the resolve/decode gap between tracks.
+    /// Confirmed on a real install: with the fetch awaited inline (the
+    /// previous behavior), Icecast's `source-timeout` (10s in AzuraCast's
+    /// generated config) reaped the source during every full-buffer decode,
+    /// so the mount vanished at each track boundary and listeners got
+    /// connection resets.
+    ///
+    /// Running the fetch on its own task also CONFINES prepare/decode
+    /// panics: they surface here as a join error (logged, then retried --
+    /// which naturally advances to the following queue entry) instead of
+    /// tearing down the whole pipeline task, which previously exited the
+    /// entire engine (see the symphonia zero-frame panic that crash-looped
+    /// a real install before it was guarded in decode.rs).
+    async fn fetch_next_gapless(
+        &mut self,
+        output: &mut OutputSink,
+        clock: &mut StreamClock,
+    ) -> PreparedTrack {
+        // Local clones so the respawn arm below doesn't borrow `self`
+        // while the silence arm holds `&mut self.audio_processor`.
+        let client = Arc::clone(&self.client);
+        let queues = Arc::clone(&self.queues);
+        let live = Arc::clone(&self.live);
+        let replaygain = self.replaygain_enabled;
+        let fallback = self.fallback_file_path.clone();
+
+        let spawn_fetch = move |client: Arc<CallbackClient>,
+                                queues: Arc<TrackQueues>,
+                                live: Arc<LiveState>,
+                                fallback: Option<String>| {
+            tokio::spawn(async move {
+                autodj::fetch_next_track(
+                    &client,
+                    &queues,
+                    Some(live.as_ref()),
+                    replaygain,
+                    fallback.as_deref(),
+                )
+                .await
+            })
+        };
+
+        let mut handle = spawn_fetch(
+            Arc::clone(&client),
+            Arc::clone(&queues),
+            Arc::clone(&live),
+            fallback.clone(),
+        );
+
+        // 100ms of stereo silence per pump: small enough to hand control
+        // back quickly once the fetch completes, large enough to be cheap.
+        let silence =
+            vec![0.0f32; (PIPELINE_SAMPLE_RATE as usize / 10) * PIPELINE_CHANNELS as usize];
+
+        loop {
+            tokio::select! {
+                res = &mut handle => match res {
+                    Ok(track) => return track,
+                    Err(e) => {
+                        tracing::error!(
+                            "next-track fetch task panicked ({e}); retrying with the following queue entry"
+                        );
+                        handle = spawn_fetch(
+                            Arc::clone(&client),
+                            Arc::clone(&queues),
+                            Arc::clone(&live),
+                            fallback.clone(),
+                        );
+                    }
+                },
+                // `should_process = false`: gap silence skips the audio
+                // post-processor -- nothing to normalize in zeroes.
+                () = paced_write_all(output, clock, &mut self.audio_processor, false, &silence) => {}
+            }
+        }
+    }
+
     /// One loop iteration when `current` is a live-DJ harbor chunk. Handles
     /// both live-to-live continuation (no crossfade at all) and
     /// live-to-AutoDJ (the DJ just disconnected -- normal crossfade
@@ -242,14 +317,7 @@ impl Pipeline {
 
         let total_frames = current.decoded.frames();
 
-        let next = autodj::fetch_next_track(
-            &self.client,
-            &self.queues,
-            Some(self.live.as_ref()),
-            self.replaygain_enabled,
-            self.fallback_file_path.as_deref(),
-        )
-        .await;
+        let next = self.fetch_next_gapless(output, clock).await;
         self.feedback.maybe_send(&self.client, &next).await;
 
         if next.is_live {
@@ -376,14 +444,7 @@ impl Pipeline {
 
         // Resolve/decode/prepare the next track now -- see module doc
         // for the buffer-position-driven lookahead rationale.
-        let next = autodj::fetch_next_track(
-            &self.client,
-            &self.queues,
-            Some(self.live.as_ref()),
-            self.replaygain_enabled,
-            self.fallback_file_path.as_deref(),
-        )
-        .await;
+        let next = self.fetch_next_gapless(output, clock).await;
 
         // SPEC.md step 8: fire feedback at the point the new track's
         // audio starts becoming audible -- the start of the crossfade
