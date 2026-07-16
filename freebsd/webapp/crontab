@@ -18,12 +18,12 @@
 #
 # NOTE: `azuracast_cli` is a thin wrapper around
 # `php backend/bin/console` run from /var/azuracast/www as the azuracast
-# user (see util/docker/web/scripts/azuracast_cli). This change does not
-# deploy the PHP application itself, so the path below
-# (/usr/local/www/azuracast) is a placeholder — update AZURACAST_PATH to
-# wherever the app is actually checked out on this jail before enabling.
+# user (see util/docker/web/scripts/azuracast_cli). AZURACAST_PATH below
+# matches the canonical deploy path — /var/azuracast/www is NOT a free
+# choice, the app derives its runtime paths from the parent of its own
+# deploy dir (see INSTALL.md step 5).
 
-AZURACAST_PATH=/usr/local/www/azuracast
+AZURACAST_PATH=/var/azuracast/www
 PATH=/usr/local/bin:/usr/bin:/bin
 
 # Runs the minute's due synchronization tasks (now playing, station

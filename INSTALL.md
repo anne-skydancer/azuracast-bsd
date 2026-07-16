@@ -84,15 +84,24 @@ jexec <your-webapp-jail-name> sh
 (or SSH directly to the jail's own address if you've set up `sshd` inside it — either way, you
 need a shell *inside* the jail for the remaining steps.)
 
-Then clone your fork of this project, into wherever you want the application deployed (the
-examples below use `/usr/local/www/azuracast`, matching the path the `rc.d/azuracast` step in
-`freebsd/webapp/README.md` sets as `azuracast_path` — pick your own and keep it consistent between
-the two):
+Then clone your fork of this project to **exactly `/var/azuracast/www`** — this path is NOT a
+free choice. The application derives every runtime path (its temp dir, storage, uploads, station
+configs, ACME certs) from *the parent directory of wherever it's deployed* (see
+`backend/src/Environment.php` — e.g. temp is `<parent>/www_tmp`), and `freebsd/webapp/nginx.conf`'s
+document root is hardcoded to `/var/azuracast/www/web`. Deploying at `/var/azuracast/www` makes all
+of those resolve to the `/var/azuracast/*` tree that `00-packages.sh` already created and owned
+correctly; deploying anywhere else makes the app compute paths into an unprepared, likely
+root-owned tree, and fails at runtime in confusing ways (confirmed the hard way on a real
+install). `00-packages.sh` creates `/var/azuracast/www` as an empty directory, so clone into it:
 
 ```sh
-git clone <your-fork-url> /usr/local/www/azuracast
-cd /usr/local/www/azuracast
+git clone <your-fork-url> /var/azuracast/www
+chown -R azuracast:azuracast /var/azuracast/www
+cd /var/azuracast/www
 ```
+
+(The `chown` matters: if you clone as root, the app — which runs as `azuracast` — can't write its
+own caches or have files deployed over it later.)
 
 If your repository is private, either:
 - use an SSH remote (`git clone git@github.com:<you>/<your-fork>.git ...`) with a deploy key added
@@ -113,7 +122,7 @@ npm run build
 ## 7. Configure the database connection
 
 ```sh
-export AZURACAST_PATH=/usr/local/www/azuracast
+export AZURACAST_PATH=/var/azuracast/www
 sh freebsd/webapp/configure-db.sh
 ```
 
@@ -157,7 +166,7 @@ configure the station's frontend connection details to point at the jail directl
 ## Updating later
 
 ```sh
-cd /usr/local/www/azuracast
+cd /var/azuracast/www
 git pull
 composer install --no-dev --no-ansi --no-interaction
 composer dump-autoload --optimize --classmap-authoritative

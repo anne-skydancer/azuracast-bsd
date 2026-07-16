@@ -34,7 +34,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 . "${SCRIPT_DIR}/../env.conf"
 
-: ${AZURACAST_PATH:="/usr/local/www/azuracast"}
+: ${AZURACAST_PATH:="/var/azuracast/www"}
 
 ENV_FILE="${AZURACAST_PATH}/azuracast.env"
 

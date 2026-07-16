@@ -32,7 +32,7 @@
 # deploy the PHP application (out of scope — "no PHP application code"),
 # so set this to wherever `backend/bin/console` actually lives on this
 # jail before enabling the service, e.g. via /etc/rc.conf.d/azuracast:
-#   azuracast_path="/usr/local/www/azuracast"
+#   azuracast_path="/var/azuracast/www"
 #   azuracast_db_host="<value of MARIADB_JAIL_IP in freebsd/env.conf>"
 #
 # azuracast_db_host has NO built-in default and MUST be set via
@@ -52,7 +52,12 @@ rcvar="azuracast_enable"
 load_rc_config "$name"
 
 : ${azuracast_enable:="NO"}
-: ${azuracast_path:="/usr/local/www/azuracast"}
+# /var/azuracast/www is not an arbitrary default: the app derives every
+# runtime path (temp, storage, uploads, station configs) from the PARENT
+# of its own deploy dir (backend/src/Environment.php), and nginx.conf's
+# document root is /var/azuracast/www/web -- deploy anywhere else and
+# those all resolve into an unprepared tree. See INSTALL.md step 5.
+: ${azuracast_path:="/var/azuracast/www"}
 : ${azuracast_db_host:=""}
 : ${azuracast_db_port:="3306"}
 : ${azuracast_db_wait_timeout:="120"}

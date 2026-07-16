@@ -46,11 +46,12 @@
 #     right tradeoff here, not a one-shot build-then-remove step.
 #   - `AZURACAST_PATH` must already be set to wherever the app is checked
 #     out (same env var convention as the crontab/rc.d script), default
-#     `/usr/local/www/azuracast` if unset.
+#     `/var/azuracast/www` if unset (the canonical deploy path -- see
+#     INSTALL.md step 5 for why it is not a free choice).
 
 set -e
 
-AZURACAST_PATH="${AZURACAST_PATH:-/usr/local/www/azuracast}"
+AZURACAST_PATH="${AZURACAST_PATH:-/var/azuracast/www}"
 ENGINE_DIR="${AZURACAST_PATH}/engine"
 
 if [ ! -d "$ENGINE_DIR" ]; then

@@ -106,7 +106,7 @@ This jail only needs to be able to *reach* MariaDB over TCP at
    deployed — deploying the app itself is out of scope for this
    change) via `/etc/rc.conf.d/azuracast`, e.g.:
    ```sh
-   echo 'azuracast_path="/usr/local/www/azuracast"' >> /etc/rc.conf.d/azuracast
+   echo 'azuracast_path="/var/azuracast/www"' >> /etc/rc.conf.d/azuracast
    ```
 
 7. Install the crontab for the `azuracast` user (update `AZURACAST_PATH`
@@ -117,7 +117,7 @@ This jail only needs to be able to *reach* MariaDB over TCP at
 
 8. Configure the database connection (interactive, first-install only):
    ```sh
-   export AZURACAST_PATH=/usr/local/www/azuracast   # wherever the app is deployed
+   export AZURACAST_PATH=/var/azuracast/www   # see INSTALL.md step 5: this path is NOT a free choice
    sh freebsd/webapp/configure-db.sh
    ```
    Asks whether you already have a MariaDB/MySQL-compatible server set
@@ -134,7 +134,7 @@ This jail only needs to be able to *reach* MariaDB over TCP at
 
 9. Build and install the streaming engine binary:
    ```sh
-   export AZURACAST_PATH=/usr/local/www/azuracast   # same as step 8
+   export AZURACAST_PATH=/var/azuracast/www   # same as step 8
    sh freebsd/webapp/build-engine.sh
    ```
    Installs a Rust toolchain (`pkg install rust`) if `cargo` isn't already
