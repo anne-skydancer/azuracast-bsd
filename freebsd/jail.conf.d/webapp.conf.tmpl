@@ -5,7 +5,13 @@
     vnet;
     vnet.interface = "@@WEBAPP_JAIL_EPAIR@@b";
 
-    exec.prestart  = "ifconfig @@WEBAPP_JAIL_EPAIR@@ create";
+    # exec.poststop (the normal epair cleanup) only runs when a jail that
+    # actually got created is removed -- a start attempt that fails partway
+    # (prestart half-done, jail creation error) leaves an orphaned epair
+    # behind that blocks every later start with "interface already exists".
+    # The destroy-before-create makes prestart self-healing against that.
+    exec.prestart  = "ifconfig @@WEBAPP_JAIL_EPAIR@@a destroy 2>/dev/null || true";
+    exec.prestart += "ifconfig @@WEBAPP_JAIL_EPAIR@@ create";
     exec.prestart += "ifconfig @@VM_PUBLIC_BRIDGE@@ addm @@WEBAPP_JAIL_EPAIR@@a";
     exec.prestart += "ifconfig @@WEBAPP_JAIL_EPAIR@@a up";
     exec.start    += "ifconfig @@WEBAPP_JAIL_EPAIR@@b @@WEBAPP_JAIL_IP@@/@@WEBAPP_JAIL_NETMASK@@ up";
@@ -13,5 +19,6 @@
     exec.start    += "route add default @@DEFAULT_ROUTE_V4@@";
     exec.start    += "route add -6 default @@DEFAULT_ROUTE_V6_GW@@%@@WEBAPP_JAIL_EPAIR@@b";
     exec.start    += "/bin/sh /etc/rc";
+    exec.stop      = "/bin/sh /etc/rc.shutdown";
     exec.poststop  = "ifconfig @@WEBAPP_JAIL_EPAIR@@a destroy";
 }
