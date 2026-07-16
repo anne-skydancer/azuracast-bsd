@@ -149,6 +149,16 @@ pub(crate) fn append_interleaved(decoded: &AudioBufferRef, out: &mut Vec<f32>) {
     let spec = *decoded.spec();
     let channels = spec.channels.count();
     let frames = decoded.frames();
+    // Zero-frame decoded buffers are real -- Vorbis emits one for its
+    // first/priming packet -- and symphonia-core 0.5.5's
+    // SampleBuffer::copy_interleaved_ref PANICS on them ("range start
+    // index 1 out of range for slice of length 0", audio.rs:856).
+    // Confirmed on a real install: without this guard the engine
+    // crash-looped on the first packet of every .ogg track. Nothing to
+    // copy anyway.
+    if frames == 0 || channels == 0 {
+        return;
+    }
     let mut sample_buf = SampleBuffer::<f32>::new(frames as u64, spec);
     sample_buf.copy_interleaved_ref(decoded.clone());
     out.reserve(frames * channels);
