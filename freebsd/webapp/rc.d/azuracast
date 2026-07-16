@@ -192,7 +192,26 @@ azuracast_prestart()
 azuracast_stop()
 {
     if [ -f "${pidfile}" ] && /usr/local/bin/supervisorctl -c "${supervisord_conf}" status >/dev/null 2>&1; then
+        supervisord_pid=$(cat "${pidfile}" 2>/dev/null)
+
         /usr/local/bin/supervisorctl -c "${supervisord_conf}" shutdown
+
+        # `supervisorctl shutdown` only REQUESTS shutdown and returns
+        # immediately -- without waiting here, `service azuracast restart`
+        # races its own start phase against the dying supervisord and
+        # fails with "Another program is already listening on a port..."
+        # (confirmed on a real install).
+        if [ -n "${supervisord_pid}" ]; then
+            i=0
+            while kill -0 "${supervisord_pid}" 2>/dev/null; do
+                i=$((i + 1))
+                if [ "$i" -ge 30 ]; then
+                    echo "WARNING: supervisord (pid ${supervisord_pid}) still running after 30s." 1>&2
+                    break
+                fi
+                sleep 1
+            done
+        fi
     else
         echo "supervisord does not appear to be running."
     fi
