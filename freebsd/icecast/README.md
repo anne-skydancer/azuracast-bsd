@@ -233,12 +233,15 @@ Notes on the exact paths above:
 
 ## Known open questions / judgment calls
 
-- **`azuracast` system user:** `freebsd/webapp/20-supervisor.sh` chowns
-  its log dir to `azuracast:azuracast`, a user its own `00-packages.sh`
-  creates. This jail was never set up by this project, so
-  `00-install-supervisor.sh` leaves `/var/log/azuracast` root-owned by
-  default rather than assuming that user exists here — adjust by hand if
-  your Icecast jail happens to already have a matching user/group.
+- **`azuracast` system user — RESOLVED, now required and created by the
+  script:** originally left as a judgment call ("this jail was never set
+  up by this project"), a real install settled it — AzuraCast's generated
+  `supervisord.frontend.conf` sets `user = azuracast` on the Icecast
+  program, and supervisord refuses to start at all if any loaded program
+  names an unknown user. `00-install-supervisor.sh` therefore now creates
+  the user (uid/gid 1001, deliberately matching the webapp jail's, since
+  Icecast reads/writes the nullfs-shared station config dir owned by that
+  numeric uid).
 - **rc.d comes from the port, not this template.** `00-install-supervisor.sh`
   installs `py312-supervisor` from ports specifically because it ships a
   native `rc.d/supervisord` service (enabled by the script via

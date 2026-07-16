@@ -46,6 +46,20 @@ mkdir -p /usr/local/etc/supervisor.d
 mkdir -p /var/log/azuracast
 mkdir -p /var/run
 
+# The azuracast user is NOT optional here: AzuraCast's generated
+# supervisord.frontend.conf sets `user = azuracast` on the Icecast
+# program, and supervisord refuses to even START if any loaded program
+# names an unknown user ("Error: Invalid user name azuracast ...",
+# confirmed on a real install). The uid/gid MUST match the webapp
+# jail's azuracast user (uid 1001, from 00-packages.sh's pw useradd)
+# because Icecast reads its config from -- and writes its pidfile/logs
+# into -- the station config directory nullfs-mounted from the webapp
+# jail, where everything is owned by that numeric uid.
+if ! pw usershow azuracast >/dev/null 2>&1; then
+    pw groupadd azuracast -g 1001
+    pw useradd azuracast -u 1001 -g 1001 -d /nonexistent -s /usr/sbin/nologin -c "AzuraCast"
+fi
+
 # JUDGMENT CALL: unlike freebsd/webapp/20-supervisor.sh (which chowns this
 # same directory to `azuracast:azuracast`, a user its own 00-packages.sh
 # creates), this jail was NOT set up by this project -- it may not have an
