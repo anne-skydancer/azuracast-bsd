@@ -104,7 +104,7 @@ but every step applies verbatim to any other station's Icecast jail
    the first `writeConfiguration()` call both exist.
 
 6. **Start supervisord in the jail.** `00-install-supervisor.sh` installs
-   the FreeBSD port (`py311-supervisor`), which ships a native rc.d
+   the FreeBSD port (`py312-supervisor`), which ships a native rc.d
    service, and enables it (`sysrc supervisord_enable=YES`) — so:
 
    ```sh
@@ -240,7 +240,7 @@ Notes on the exact paths above:
   default rather than assuming that user exists here — adjust by hand if
   your Icecast jail happens to already have a matching user/group.
 - **rc.d comes from the port, not this template.** `00-install-supervisor.sh`
-  installs `py311-supervisor` from ports specifically because it ships a
+  installs `py312-supervisor` from ports specifically because it ships a
   native `rc.d/supervisord` service (enabled by the script via
   `sysrc supervisord_enable=YES`). This deliberately differs from
   `webapp/20-supervisor.sh`'s pip install: the webapp jail must NOT have

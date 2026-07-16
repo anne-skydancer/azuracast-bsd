@@ -265,7 +265,7 @@ layer:
   for it is included in `crontab` but disabled by default.
 - **supervisord install method**: `20-supervisor.sh` uses `pip install
   supervisor` to mirror the Docker build exactly; `sysutils/py-supervisor`
-  (e.g. `py311-supervisor`) is a `pkg`-only alternative noted in that
+  (e.g. `py312-supervisor`) is a `pkg`-only alternative noted in that
   script's comments but not used by default.
 - **Centrifugo/SFTPGo versions**: pinned to v6.9.0 / v2.6.4 respectively,
   matching `util/docker/web/setup/centrifugo.sh` and `sftpgo.sh` exactly.

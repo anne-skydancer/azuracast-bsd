@@ -25,18 +25,23 @@
 #   setuptools supervisor git+https://.../supervisor-stdout`), so this
 #   mirrors it most faithfully. Requires py-pip.
 #
-# Option B (alternative, not used below): `pkg install -y py311-supervisor`
+# Option B (alternative, not used below): `pkg install -y py312-supervisor`
 #   FreeBSD ports carries supervisor as a per-Python-version port
-#   (sysutils/py-supervisor, generated as e.g. py311-supervisor). This
-#   avoids pip entirely if you'd rather stay on pure pkg. Swap the pip
-#   install line below for this if preferred — not verified against a
-#   specific Python/FreeBSD-release combination as part of this change.
+#   (sysutils/py-supervisor, generated as e.g. py312-supervisor for the
+#   current default Python 3.12 -- confirmed on a real install 2026-07).
+#   This avoids pip entirely, and ships a native rc.d service -- which is
+#   exactly why freebsd/icecast/00-install-supervisor.sh DOES use it. It
+#   is deliberately NOT used here: this jail's supervisord lifecycle is
+#   owned by rc.d/azuracast (MariaDB-wait + migrations before start), and
+#   an independently-enabled supervisord service alongside it means two
+#   supervisords fighting over the same programs -- confirmed the hard
+#   way on a real install.
 
 set -e
 
-pkg install -y python311 py311-pip
+pkg install -y python312 py312-pip
 
-python3.11 -m pip install --no-cache-dir supervisor
+python3.12 -m pip install --no-cache-dir supervisor
 
 # supervisor-stdout (used by Docker's [eventlistener:stdout] to fold
 # per-program output into the container's stdout) is meaningless on a
