@@ -214,11 +214,23 @@ class Icecast extends AbstractFrontend
             'limits' => [
                 'clients' => !empty($frontendConfig->max_listeners) ? $frontendConfig->max_listeners * 2 : 2500,
                 'sources' => $station->mounts->count(),
-                'queue-size' => 524288,
+                // queue-size/burst-size raised from the inherited
+                // 524288/65535: burst-size is the ready-made head start a
+                // NEW listener receives instantly, and 64KB is only ~1.6s
+                // of a 320kbps stream -- players that prebuffer several
+                // seconds then sit waiting for the rest to accumulate in
+                // real time (observed on a real install: HLS started
+                // instantly while the Icecast stream took many seconds).
+                // 256KB bursts ~6.5s at 320kbps (proportionally more at
+                // lower bitrates); queue-size is quadrupled to keep the
+                // same relative headroom between a listener's max lag and
+                // the burst. Cost: new listeners run a few extra seconds
+                // behind "live", which is irrelevant for radio.
+                'queue-size' => 2097152,
                 'client-timeout' => 30,
                 'header-timeout' => 15,
                 'source-timeout' => 10,
-                'burst-size' => 65535,
+                'burst-size' => 262144,
             ],
             'authentication' => [
                 'source-password' => $frontendConfig->source_pw,
