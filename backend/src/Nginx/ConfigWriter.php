@@ -44,6 +44,15 @@ final class ConfigWriter implements EventSubscriberInterface
         $listenBaseUrlForRegex = preg_quote($listenBaseUrl);
         $port = $station->frontend_config->port;
 
+        // In split-deployment topologies (e.g. the FreeBSD per-station
+        // Icecast jails) the frontend runs on a separate host, given by
+        // frontend_config->host; loopback only when genuinely co-located.
+        $frontendHost = $station->frontend_config->host ?? '127.0.0.1';
+        if (str_contains($frontendHost, ':')) {
+            // Bracket IPv6 literals for URL syntax.
+            $frontendHost = '[' . $frontendHost . ']';
+        }
+
         $event->appendBlock(
             <<<NGINX
             location ~ ^({$listenBaseUrlForRegex}|/radio/{$port})\$ {
@@ -62,7 +71,7 @@ final class ConfigWriter implements EventSubscriberInterface
                 proxy_set_header Host \$host/{$listenBaseUrl};
 
                 set \$args \$args&_ic2=1;
-                proxy_pass http://127.0.0.1:{$port}/\$2?\$args;
+                proxy_pass http://{$frontendHost}:{$port}/\$2?\$args;
             }
             NGINX
         );

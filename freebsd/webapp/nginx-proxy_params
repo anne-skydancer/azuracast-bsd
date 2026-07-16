@@ -1,0 +1,33 @@
+# freebsd/webapp/nginx-proxy_params
+#
+# Install to /usr/local/etc/nginx/proxy_params.
+#
+# Debian's nginx package ships /etc/nginx/proxy_params; FreeBSD's does
+# not ship any equivalent. AzuraCast's per-station generated nginx
+# configs (backend/src/Nginx/ConfigWriter.php -- the /listen radio
+# proxy and /webdj proxy location blocks) contain `include proxy_params;`
+# lines, and nginx resolves that name relative to its conf dir. Without
+# this file, every nginx reload after a station config is written FAILS
+# config validation ("proxy_params" not found), nginx silently keeps
+# running on its previous config, and the /listen web-proxy routes never
+# appear -- listeners get AzuraCast's 404 page instead of the stream
+# (confirmed on a real install).
+#
+# Contents mirror Docker's util/docker/web/nginx/proxy_params.conf (the
+# same block is inlined in freebsd/webapp/nginx.conf's Centrifugo
+# location). The $proxy_* variables are defined by map blocks in
+# freebsd/webapp/nginx.conf's http section.
+
+proxy_http_version 1.1;
+proxy_set_header Origin $http_origin;
+proxy_set_header Host $http_host;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection $proxy_connection;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $proxy_x_forwarded_proto;
+proxy_set_header X-Forwarded-Ssl $proxy_x_forwarded_ssl;
+proxy_set_header X-Forwarded-Port $proxy_x_forwarded_port;
+
+# Mitigate httpoxy attack.
+proxy_set_header Proxy "";

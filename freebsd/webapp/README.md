@@ -81,9 +81,15 @@ This jail only needs to be able to *reach* MariaDB over TCP at
 5. Copy the nginx config and the php-fpm pool configs:
    ```sh
    cp freebsd/webapp/nginx.conf /usr/local/etc/nginx/nginx.conf
+   cp freebsd/webapp/nginx-proxy_params /usr/local/etc/nginx/proxy_params
    cp freebsd/webapp/php-fpm.d/www.conf /usr/local/etc/php-fpm.d/www.conf
    cp freebsd/webapp/php-fpm.d/internal.conf /usr/local/etc/php-fpm.d/internal.conf
    ```
+   `nginx-proxy_params` replaces a file Debian's nginx ships but FreeBSD's
+   doesn't — AzuraCast's generated per-station configs `include
+   proxy_params;`, and without it every nginx reload after a station is
+   created fails validation, leaving the `/listen` web-proxy routes
+   silently missing (see the file's header comment).
    The pool configs are NOT optional and the `www.conf` copy deliberately
    **replaces** the package's stock pool — `nginx.conf`'s upstreams point
    at the two unix sockets these pools create
