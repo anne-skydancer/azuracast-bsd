@@ -68,6 +68,13 @@ final class ConfigWriter implements EventSubscriberInterface
                 proxy_set_header          Cookie "";
                 proxy_connect_timeout     60;
 
+                # A live audio stream must be relayed, not buffered: with
+                # nginx's default buffering, listeners on the proxied
+                # (notably HTTPS) path waited up to a minute for playback
+                # that started instantly when reaching Icecast directly
+                # (confirmed on a real install).
+                proxy_buffering           off;
+
                 proxy_set_header Host \$host/{$listenBaseUrl};
 
                 set \$args \$args&_ic2=1;

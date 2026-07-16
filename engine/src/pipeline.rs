@@ -229,41 +229,52 @@ impl Pipeline {
     /// tearing down the whole pipeline task, which previously exited the
     /// entire engine (see the symphonia zero-frame panic that crash-looped
     /// a real install before it was guarded in decode.rs).
-    async fn fetch_next_gapless(
-        &mut self,
-        output: &mut OutputSink,
-        clock: &mut StreamClock,
-    ) -> PreparedTrack {
-        // Local clones so the respawn arm below doesn't borrow `self`
-        // while the silence arm holds `&mut self.audio_processor`.
+    /// Spawns the next-track resolve/decode/prepare on a detached task and
+    /// returns its handle. Spawning EARLY -- at the point a track starts
+    /// playing, not when its successor is needed -- is what makes track
+    /// transitions gapless in practice: the (potentially slow -- full-file
+    /// decode + sinc resample over NFS, tens of seconds observed on a real
+    /// install) preparation runs concurrently with minutes of playback, so
+    /// by the crossfade point the result is almost always already waiting.
+    fn spawn_fetch_task(&self) -> tokio::task::JoinHandle<PreparedTrack> {
         let client = Arc::clone(&self.client);
         let queues = Arc::clone(&self.queues);
         let live = Arc::clone(&self.live);
         let replaygain = self.replaygain_enabled;
         let fallback = self.fallback_file_path.clone();
 
-        let spawn_fetch = move |client: Arc<CallbackClient>,
-                                queues: Arc<TrackQueues>,
-                                live: Arc<LiveState>,
-                                fallback: Option<String>| {
-            tokio::spawn(async move {
-                autodj::fetch_next_track(
-                    &client,
-                    &queues,
-                    Some(live.as_ref()),
-                    replaygain,
-                    fallback.as_deref(),
-                )
-                .await
-            })
-        };
+        tokio::spawn(async move {
+            autodj::fetch_next_track(
+                &client,
+                &queues,
+                Some(live.as_ref()),
+                replaygain,
+                fallback.as_deref(),
+            )
+            .await
+        })
+    }
 
-        let mut handle = spawn_fetch(
-            Arc::clone(&client),
-            Arc::clone(&queues),
-            Arc::clone(&live),
-            fallback.clone(),
-        );
+    /// Awaits a previously-spawned fetch, pumping paced silence chunks
+    /// into the output the whole time, so the source connection to Icecast
+    /// never goes idle however long the preparation takes. Confirmed on a
+    /// real install: with the fetch awaited inline and no silence-fill,
+    /// Icecast's `source-timeout` (10s in AzuraCast's generated config)
+    /// reaped the source during every between-track gap.
+    ///
+    /// Running the fetch on its own task also CONFINES prepare/decode
+    /// panics: they surface here as a join error (logged, then retried --
+    /// which naturally advances to the following queue entry) instead of
+    /// tearing down the whole pipeline task, which previously exited the
+    /// entire engine (see the symphonia zero-frame panic that crash-looped
+    /// a real install before it was guarded in decode.rs).
+    async fn await_fetch_gapless(
+        &mut self,
+        output: &mut OutputSink,
+        clock: &mut StreamClock,
+        mut handle: tokio::task::JoinHandle<PreparedTrack>,
+    ) -> PreparedTrack {
+        let wait_started = tokio::time::Instant::now();
 
         // 100ms of stereo silence per pump: small enough to hand control
         // back quickly once the fetch completes, large enough to be cheap.
@@ -273,17 +284,21 @@ impl Pipeline {
         loop {
             tokio::select! {
                 res = &mut handle => match res {
-                    Ok(track) => return track,
+                    Ok(track) => {
+                        let waited = wait_started.elapsed();
+                        if waited > Duration::from_millis(250) {
+                            tracing::info!(
+                                "next track was not ready at the transition point; \
+                                 filled {waited:?} of dead air with silence"
+                            );
+                        }
+                        return track;
+                    }
                     Err(e) => {
                         tracing::error!(
                             "next-track fetch task panicked ({e}); retrying with the following queue entry"
                         );
-                        handle = spawn_fetch(
-                            Arc::clone(&client),
-                            Arc::clone(&queues),
-                            Arc::clone(&live),
-                            fallback.clone(),
-                        );
+                        handle = self.spawn_fetch_task();
                     }
                 },
                 // `should_process = false`: gap silence skips the audio
@@ -291,6 +306,18 @@ impl Pipeline {
                 () = paced_write_all(output, clock, &mut self.audio_processor, false, &silence) => {}
             }
         }
+    }
+
+    /// Spawn-and-await in one step, for the call sites with nothing useful
+    /// to overlap the preparation with (pipeline startup, live-DJ chunk
+    /// continuation).
+    async fn fetch_next_gapless(
+        &mut self,
+        output: &mut OutputSink,
+        clock: &mut StreamClock,
+    ) -> PreparedTrack {
+        let handle = self.spawn_fetch_task();
+        self.await_fetch_gapless(output, clock, handle).await
     }
 
     /// One loop iteration when `current` is a live-DJ harbor chunk. Handles
@@ -393,6 +420,16 @@ impl Pipeline {
         current: PreparedTrack,
         played_frames: usize,
     ) -> (PreparedTrack, usize) {
+        // PREFETCH: start resolving/decoding the successor NOW, before
+        // playing this track's body -- see `spawn_fetch_task`'s doc. By
+        // the crossfade point below, minutes of playback have elapsed and
+        // the result is (almost always) already waiting, so the audible
+        // between-track gap collapses to ~zero. Confirmed on a real
+        // install pre-prefetch: fetch-at-the-transition-point meant every
+        // track boundary carried the full prep time (observed >60s on
+        // large files over NFS) as on-air silence.
+        let mut fetch_handle = self.spawn_fetch_task();
+
         let window_frames = (self.cross_window_secs * PIPELINE_SAMPLE_RATE as f64).round() as usize;
 
         let total_frames = current.decoded.frames();
@@ -442,9 +479,19 @@ impl Pipeline {
         )
         .await;
 
-        // Resolve/decode/prepare the next track now -- see module doc
-        // for the buffer-position-driven lookahead rationale.
-        let next = self.fetch_next_gapless(output, clock).await;
+        // Collect the prefetched successor (spawned at the top of this
+        // fn, likely long since finished). PRIORITY GUARD: the prefetch
+        // resolved against the world as it was when this track STARTED --
+        // if a live DJ has become ready since, SPEC.md C.8's priority
+        // order says live wins, so the stale queue-track prefetch is
+        // discarded and a fresh fetch (which will return the live chunk)
+        // takes its place. Without this, the DJ's first audio would be
+        // delayed behind one full prefetched AutoDJ track.
+        if self.live.is_ready() {
+            fetch_handle.abort();
+            fetch_handle = self.spawn_fetch_task();
+        }
+        let next = self.await_fetch_gapless(output, clock, fetch_handle).await;
 
         // SPEC.md step 8: fire feedback at the point the new track's
         // audio starts becoming audible -- the start of the crossfade
