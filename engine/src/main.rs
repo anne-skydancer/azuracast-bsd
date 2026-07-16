@@ -214,6 +214,14 @@ async fn run(cfg: EngineConfig) {
     // blocking the pipeline or any other output target.
     let (audio_tap_tx, _) = tokio::sync::broadcast::channel::<std::sync::Arc<Vec<f32>>>(64);
 
+    // Stream-facing now-playing metadata: the pipeline publishes
+    // title/artist at every (non-jingle) track boundary; each output target
+    // watches it and delivers it to listeners' players per-format (ICY
+    // updinfo vs chained-Ogg encoder restart) -- see `output.rs`'s
+    // "Now-playing metadata" module doc.
+    let (now_playing_tx, now_playing_rx) =
+        tokio::sync::watch::channel(output::NowPlaying::default());
+
     // Phase 5: one independent encode+push task per configured local mount
     // and per configured remote relay -- see `output.rs`'s module doc for
     // the full scope (Icecast2 source-client protocol only, no
@@ -226,8 +234,9 @@ async fn run(cfg: EngineConfig) {
     }
     for target in output_targets {
         let tap_rx_source = audio_tap_tx.clone();
+        let np_rx = now_playing_rx.clone();
         tokio::spawn(async move {
-            output::run_output_target(target, tap_rx_source).await;
+            output::run_output_target(target, tap_rx_source, np_rx).await;
         });
     }
 
@@ -267,6 +276,7 @@ async fn run(cfg: EngineConfig) {
         live.clone(),
         &cfg,
         audio_tap_tx,
+        now_playing_tx,
     );
     let pipeline_task = tokio::spawn(async move { pipeline.run().await });
 

@@ -58,7 +58,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 
 use crate::audio_processing::AudioProcessor;
 use crate::autodj;
@@ -69,6 +69,7 @@ use crate::crossfade::{self, CrossfadeMode, CrossfadeParams, CrossfadeThresholds
 use crate::decode::{PIPELINE_CHANNELS, PIPELINE_SAMPLE_RATE};
 use crate::feedback::FeedbackDedup;
 use crate::harbor::LiveState;
+use crate::output::NowPlaying;
 use crate::prepare::PreparedTrack;
 use crate::queue::TrackQueues;
 
@@ -95,6 +96,10 @@ pub struct Pipeline {
     /// Cloned into `main.rs` so it can be handed to each independent
     /// mount/remote output task's `broadcast::Receiver`.
     audio_tap: broadcast::Sender<Arc<Vec<f32>>>,
+    /// Stream-facing now-playing state, watched by every output target so
+    /// ordinary players (VLC etc.) see song titles -- see `output.rs`'s
+    /// "Now-playing metadata" module doc and `publish_now_playing` below.
+    now_playing: watch::Sender<NowPlaying>,
     /// Post-cutover audio post-processing (`nrj`/`stereo_tool`/none) -- see
     /// `audio_processing.rs`. One instance for the whole pipeline lifetime
     /// (never reset per-track), since both `NrjProcessor`'s smoothed
@@ -120,6 +125,7 @@ impl Pipeline {
         live: Arc<LiveState>,
         cfg: &EngineConfig,
         audio_tap: broadcast::Sender<Arc<Vec<f32>>>,
+        now_playing: watch::Sender<NowPlaying>,
     ) -> Self {
         Self {
             client,
@@ -135,9 +141,38 @@ impl Pipeline {
             output_path: cfg.paths.pipeline_output_path.clone(),
             feedback: FeedbackDedup::new(),
             audio_tap,
+            now_playing,
             audio_processor: AudioProcessor::from_config(&cfg.audio_processing),
             audio_include_live: cfg.audio_processing.include_live,
         }
+    }
+
+    /// Publishes `track`'s title/artist to the now-playing watch channel
+    /// consumed by every output target (`output.rs`) -- the stream-facing
+    /// counterpart of `FeedbackDedup::maybe_send`, applied at the same
+    /// track boundaries with the same suppression rules: jingles and the
+    /// error/fallback file play audibly but never retitle the stream.
+    /// Dedup is inherent (`send_if_modified` only wakes watchers when the
+    /// value actually changed), so calling this redundantly is harmless.
+    fn publish_now_playing(&self, track: &PreparedTrack) {
+        if track.is_error_file || track.jingle_mode {
+            return;
+        }
+        if track.metadata.title.is_none() && track.metadata.artist.is_none() {
+            return;
+        }
+        let np = NowPlaying {
+            title: track.metadata.title.clone(),
+            artist: track.metadata.artist.clone(),
+        };
+        self.now_playing.send_if_modified(|cur| {
+            if *cur == np {
+                false
+            } else {
+                *cur = np;
+                true
+            }
+        });
     }
 
     /// Runs forever (until the process is torn down), matching the
@@ -166,6 +201,7 @@ impl Pipeline {
 
         let mut current = self.fetch_next_gapless(&mut output, &mut clock).await;
         self.feedback.maybe_send(&self.client, &current).await;
+        self.publish_now_playing(&current);
         let mut played_frames = 0usize;
 
         loop {
@@ -181,6 +217,7 @@ impl Pipeline {
             if let Some(overrides) = self.control.take_metadata_override() {
                 current.metadata.apply_overrides(&overrides);
                 self.feedback.maybe_send(&self.client, &current).await;
+                self.publish_now_playing(&current);
             }
 
             // SPEC.md B.4 #3's `check_live()`: the moment live becomes the
@@ -346,6 +383,7 @@ impl Pipeline {
 
         let next = self.fetch_next_gapless(output, clock).await;
         self.feedback.maybe_send(&self.client, &next).await;
+        self.publish_now_playing(&next);
 
         if next.is_live {
             // Continuing the same live stream: straight-through, no
@@ -498,6 +536,7 @@ impl Pipeline {
         // transition into it -- rather than after the full crossfade
         // completes.
         self.feedback.maybe_send(&self.client, &next).await;
+        self.publish_now_playing(&next);
 
         let old_tail = &current.decoded.samples[body_end_frames * 2..tail_end_frames * 2];
         let head_frames = window_frames.min(next.decoded.frames());

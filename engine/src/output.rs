@@ -44,13 +44,34 @@
 //!   elaborate. One target being unreachable never affects any other
 //!   target, nor the AutoDJ/harbor pipeline itself.
 //!
+//! ## Now-playing metadata (stream-facing)
+//!
+//! Each output target also subscribes to the pipeline's now-playing
+//! `watch` channel (see `pipeline.rs::publish_now_playing`) so that
+//! ordinary stream players (VLC etc.) see song titles, not just the
+//! AzuraCast web UI (which gets its metadata via the `feedback` callback
+//! instead). The delivery mechanism differs per format, because Icecast
+//! itself does:
+//!
+//! - **MP3/AAC/FLAC** (`!inband_metadata()`): out-of-band ICY update -- a
+//!   small authenticated GET to the frontend's
+//!   `/admin/metadata?mode=updinfo` endpoint on every song change, exactly
+//!   what classic source clients (BUTT et al.) do. The long-running ffmpeg
+//!   encoder is never touched.
+//! - **Ogg/Opus** (`inband_metadata()`): stock Icecast refuses URL updates
+//!   for Ogg mounts -- metadata must travel in-band as Vorbis comments. On
+//!   every song change the encoder is restarted with fresh `-metadata`
+//!   tags *on the same open source connection*, producing a chained Ogg
+//!   stream (RFC 3533: concatenated logical streams; each generation gets
+//!   a distinct `-serial_offset` since consecutive links must not share a
+//!   serial number). This is the same approach Liquidsoap/IceS use. The
+//!   pipeline keeps producing paced PCM into the broadcast tap during the
+//!   few-ms restart, so listeners hear a continuous stream.
+//!
 //! **Explicitly out of scope / deferred** (see the task report and
 //! `README.md`): legacy Shoutcast/RSAS remote protocols (only
-//! `protocol = "icecast"` is handled; anything else is logged and skipped),
-//! `share_encoders`, and mid-stream ICY metadata updates pushed over an
-//! already-open source connection (some source clients periodically
-//! re-announce now-playing metadata this way -- noted here as a possible
-//! future enhancement, not implemented). HLS output (SPEC.md B.8) was
+//! `protocol = "icecast"` is handled; anything else is logged and skipped)
+//! and `share_encoders`. HLS output (SPEC.md B.8) was
 //! originally deferred from this module's scope too, but is now implemented
 //! separately in `hls.rs` -- see that module's doc.
 
@@ -62,7 +83,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::process::Command;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 
 use crate::config::EngineConfig;
 use crate::decode::{PIPELINE_CHANNELS, PIPELINE_SAMPLE_RATE};
@@ -88,6 +109,41 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
 /// `"source"` -- and `[[remotes]]`'s `username` field is optional for the
 /// same reason).
 const DEFAULT_SOURCE_USERNAME: &str = "source";
+
+/// Per-call timeout for the out-of-band `updinfo` metadata GET. Short and
+/// independent of the audio path -- a slow/wedged admin endpoint must never
+/// affect the stream itself.
+const UPDINFO_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Upper bound on the encoder flush during an in-band metadata restart
+/// (stdin EOF -> ffmpeg writes its final Ogg pages -> exits). Generous;
+/// a healthy ffmpeg flushes in milliseconds. If it hangs, the whole
+/// connection attempt is abandoned and the normal reconnect loop recovers.
+const ENCODER_FLUSH_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The title/artist pair every output target watches for song changes --
+/// the stream-facing counterpart of the `feedback` callback's payload,
+/// published by `pipeline.rs::publish_now_playing` on the same track
+/// boundaries (with the same jingle/error-file suppression).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NowPlaying {
+    pub title: Option<String>,
+    pub artist: Option<String>,
+}
+
+impl NowPlaying {
+    /// The conventional single-string `"Artist - Title"` form used by
+    /// Icecast's `updinfo` endpoint (its `song` parameter is one string,
+    /// not structured fields). `None` when there is nothing to show.
+    pub fn song_string(&self) -> Option<String> {
+        match (&self.artist, &self.title) {
+            (Some(a), Some(t)) => Some(format!("{a} - {t}")),
+            (None, Some(t)) => Some(t.clone()),
+            (Some(a), None) => Some(a.clone()),
+            (None, None) => None,
+        }
+    }
+}
 
 /// The five station-configurable output formats (SPEC.md's `StreamFormats`
 /// enum, as far as this engine implements it).
@@ -141,6 +197,17 @@ impl OutputFormat {
         }
     }
 
+    /// `true` for formats whose now-playing metadata must travel in-band
+    /// (as Vorbis comments in a chained Ogg stream, via encoder restart);
+    /// `false` for formats updated out-of-band through Icecast's
+    /// `/admin/metadata?mode=updinfo` ICY path. See this module's doc.
+    pub fn inband_metadata(self) -> bool {
+        match self {
+            OutputFormat::Ogg | OutputFormat::Opus => true,
+            OutputFormat::Mp3 | OutputFormat::Aac | OutputFormat::Flac => false,
+        }
+    }
+
     /// ffmpeg codec-selection + bitrate args for this format. FLAC is
     /// lossless and takes no bitrate arg at all -- `bitrate_kbps` is simply
     /// ignored in that case (the config still carries a `bitrate` field for
@@ -181,11 +248,19 @@ impl OutputFormat {
 /// (read from stdin) to `format` at `bitrate_kbps`, writing the encoded
 /// container bytes to stdout. Pure/unit-testable: builds the argument
 /// vector without spawning anything.
+///
+/// `song`'s title/artist (when present) are written as container metadata
+/// -- for the Ogg family that's the Vorbis comments listeners' players
+/// actually display; for other containers it's harmless start-of-stream
+/// tagging. `ogg_serial_offset` disambiguates consecutive chained-Ogg
+/// links (see this module's doc) and is only emitted for Ogg containers.
 pub fn ffmpeg_args(
     format: OutputFormat,
     bitrate_kbps: u32,
     sample_rate: u32,
     channels: u16,
+    song: &NowPlaying,
+    ogg_serial_offset: u32,
 ) -> Vec<String> {
     let mut args = vec![
         "-hide_banner".to_string(),
@@ -201,6 +276,18 @@ pub fn ffmpeg_args(
         "pipe:0".to_string(),
     ];
     args.extend(format.codec_args(bitrate_kbps));
+    if let Some(title) = &song.title {
+        args.push("-metadata".to_string());
+        args.push(format!("title={title}"));
+    }
+    if let Some(artist) = &song.artist {
+        args.push("-metadata".to_string());
+        args.push(format!("artist={artist}"));
+    }
+    if format.container() == "ogg" {
+        args.push("-serial_offset".to_string());
+        args.push(ogg_serial_offset.to_string());
+    }
     args.push("-f".to_string());
     args.push(format.container().to_string());
     args.push("pipe:1".to_string());
@@ -223,6 +310,10 @@ pub struct IcecastTarget {
     pub format: OutputFormat,
     pub bitrate: u32,
     pub is_public: bool,
+    /// Station display name, sent as the `ice-name` header so players show
+    /// a proper stream name instead of falling back to the mount filename.
+    /// Empty string -> header omitted.
+    pub stream_name: String,
     /// Human-readable label for log lines only (e.g. `"local mount
     /// /station.mp3"` or `"remote relay.example.com:8000/relay-mount"`).
     pub label: String,
@@ -238,16 +329,28 @@ pub fn build_source_request(target: &IcecastTarget) -> Vec<u8> {
     let credentials = format!("{}:{}", target.username, target.password);
     let b64 = STANDARD.encode(credentials);
     let public_flag = if target.is_public { 1 } else { 0 };
-    let request = format!(
+    let mut request = format!(
         "SOURCE {mount} ICE/1.0\r\n\
          Authorization: Basic {b64}\r\n\
          Content-Type: {content_type}\r\n\
          User-Agent: azuracast-engine\r\n\
-         ice-public: {public_flag}\r\n\
-         \r\n",
+         ice-public: {public_flag}\r\n",
         mount = target.mount,
         content_type = target.format.content_type(),
     );
+    // Station display name -- the header value must stay a single line, so
+    // all whitespace runs (including any CR/LF in the configured name) are
+    // collapsed to single spaces rather than allowed to inject extra
+    // headers.
+    let stream_name = target
+        .stream_name
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !stream_name.is_empty() {
+        request.push_str(&format!("ice-name: {stream_name}\r\n"));
+    }
+    request.push_str("\r\n");
     request.into_bytes()
 }
 
@@ -316,18 +419,69 @@ async fn connect_and_handshake(target: &IcecastTarget) -> Result<TcpStream, Stri
 /// chatty on stderr even at `-loglevel error` in some builds; nothing in
 /// this engine consumes it, matching `harbor.rs`'s general "don't record
 /// diagnostic noise nobody reads" posture).
-fn build_ffmpeg_command(format: OutputFormat, bitrate_kbps: u32) -> Command {
+fn build_ffmpeg_command(target: &IcecastTarget, song: &NowPlaying, ogg_serial_offset: u32) -> Command {
     let mut cmd = Command::new("ffmpeg");
     cmd.args(ffmpeg_args(
-        format,
-        bitrate_kbps,
+        target.format,
+        target.bitrate,
         PIPELINE_SAMPLE_RATE,
         PIPELINE_CHANNELS,
+        song,
+        ogg_serial_offset,
     ));
     cmd.stdin(Stdio::piped());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::null());
     cmd
+}
+
+/// Fire-and-forget out-of-band ICY metadata push to Icecast's
+/// `/admin/metadata?mode=updinfo` endpoint, authenticated with the mount's
+/// own source credentials (Icecast accepts either admin or per-mount source
+/// credentials there -- it's the same path classic source clients use).
+/// Failures are logged and swallowed: metadata is cosmetic, the audio path
+/// must never notice.
+async fn send_updinfo(http: reqwest::Client, target: IcecastTarget, song: String) {
+    // Bracket IPv6 literals for URL syntax (same convention as the PHP
+    // side's ConfigWriter and RemoteSupervisorClientFactory).
+    let host = if target.host.contains(':') {
+        format!("[{}]", target.host)
+    } else {
+        target.host.clone()
+    };
+    let url = format!("http://{host}:{}/admin/metadata", target.port);
+    let result = http
+        .get(&url)
+        .query(&[
+            ("mode", "updinfo"),
+            ("mount", target.mount.as_str()),
+            ("charset", "UTF-8"),
+            ("song", song.as_str()),
+        ])
+        .basic_auth(&target.username, Some(&target.password))
+        .timeout(UPDINFO_TIMEOUT)
+        .send()
+        .await;
+    match result {
+        Ok(resp) if resp.status().is_success() => {
+            tracing::debug!("output[{}]: pushed ICY metadata: {song}", target.label);
+        }
+        Ok(resp) => tracing::warn!(
+            "output[{}]: ICY metadata update rejected: HTTP {}",
+            target.label,
+            resp.status()
+        ),
+        Err(e) => tracing::warn!("output[{}]: ICY metadata update failed: {e}", target.label),
+    }
+}
+
+/// How one encoder generation inside `run_output_once` ended: either a
+/// deliberate in-band metadata restart (same connection, new ffmpeg with
+/// new tags -> next chained-Ogg link) or the whole connection attempt is
+/// over (cleanly or with an error).
+enum GenerationEnd {
+    RestartEncoder,
+    ConnectionOver(Result<(), String>),
 }
 
 /// Runs `target`'s output forever: connect, handshake, spawn ffmpeg, pump
@@ -337,9 +491,13 @@ fn build_ffmpeg_command(format: OutputFormat, bitrate_kbps: u32) -> Command {
 /// to be spawned as its own independent `tokio::spawn` task per mount/remote
 /// (see `main.rs`), so one target's outage never affects any other target
 /// or the AutoDJ/harbor pipeline itself.
-pub async fn run_output_target(target: IcecastTarget, tap: broadcast::Sender<Arc<Vec<f32>>>) {
+pub async fn run_output_target(
+    target: IcecastTarget,
+    tap: broadcast::Sender<Arc<Vec<f32>>>,
+    mut now_playing: watch::Receiver<NowPlaying>,
+) {
     loop {
-        match run_output_once(&target, &tap).await {
+        match run_output_once(&target, &tap, &mut now_playing).await {
             Ok(()) => tracing::info!(
                 "output[{}]: connection ended; reconnecting in {RECONNECT_BACKOFF:?}",
                 target.label
@@ -356,9 +514,18 @@ pub async fn run_output_target(target: IcecastTarget, tap: broadcast::Sender<Arc
 /// One connect-handshake-encode-stream attempt for `target`. Returns once
 /// the connection ends (cleanly or otherwise) -- the caller (`run_output_target`)
 /// handles retry/backoff.
+///
+/// Internally structured as a loop of *encoder generations* over a single
+/// source connection: for in-band-metadata formats (Ogg/Opus), each song
+/// change ends the current generation (stdin EOF -> ffmpeg flushes its
+/// final pages and exits -> remaining bytes are drained to the socket) and
+/// starts a new ffmpeg with the new tags, forming a chained Ogg stream.
+/// Out-of-band formats (MP3/AAC/FLAC) keep one generation for the life of
+/// the connection and push song changes via `send_updinfo` instead.
 async fn run_output_once(
     target: &IcecastTarget,
     tap: &broadcast::Sender<Arc<Vec<f32>>>,
+    now_playing: &mut watch::Receiver<NowPlaying>,
 ) -> Result<(), String> {
     let mut rx = tap.subscribe();
 
@@ -379,60 +546,154 @@ async fn run_output_once(
         })??;
     tracing::info!("output[{}]: connected, streaming", target.label);
 
-    let mut child = build_ffmpeg_command(target.format, target.bitrate)
-        .spawn()
-        .map_err(|e| format!("failed to spawn ffmpeg: {e}"))?;
+    // Snapshot the current song; `changed()` below then only fires for
+    // updates arriving after this point.
+    let mut song = now_playing.borrow_and_update().clone();
+    // `false` once the watch sender is gone (pipeline torn down): the
+    // `changed()` select branch is disabled so it can't busy-error, and the
+    // stream simply keeps playing without further metadata.
+    let mut watch_alive = true;
 
-    let mut ffmpeg_stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| "ffmpeg child has no stdin handle".to_string())?;
-    let mut ffmpeg_stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "ffmpeg child has no stdout handle".to_string())?;
+    let http = reqwest::Client::new();
 
-    // Feeds tapped PCM samples into ffmpeg's stdin as raw f32 LE bytes.
-    // Runs as its own task so it can proceed independently of the
-    // stdout->TCP copy below (ffmpeg buffers internally between the two).
-    let feed_task = tokio::spawn(async move {
-        loop {
-            match rx.recv().await {
-                Ok(samples) => {
-                    let mut bytes = Vec::with_capacity(samples.len() * 4);
-                    for s in samples.iter() {
-                        bytes.extend_from_slice(&s.to_le_bytes());
+    // We only write to the connection after the handshake; the read half is
+    // dropped (which does NOT shut the socket down -- only dropping the
+    // write half would). The write half round-trips through each
+    // generation's copy task so the connection outlives encoder restarts.
+    let (_read_half, write_half) = stream.into_split();
+    let mut write_half = write_half;
+
+    // Chained-Ogg link counter: consecutive logical streams on one
+    // connection must not share an Ogg serial number (RFC 3533), so every
+    // generation gets a distinct `-serial_offset`.
+    let mut generation: u32 = 0;
+
+    loop {
+        let mut child = build_ffmpeg_command(target, &song, generation)
+            .spawn()
+            .map_err(|e| format!("failed to spawn ffmpeg: {e}"))?;
+        generation = generation.wrapping_add(1);
+
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "ffmpeg child has no stdin handle".to_string())?;
+        let mut stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "ffmpeg child has no stdout handle".to_string())?;
+
+        // stdout -> socket copy runs as its own task so neither side can
+        // block the other (ffmpeg buffers between its stdin and stdout).
+        // It owns the write half and hands it back on completion so the
+        // next generation can reuse the same connection.
+        let mut copy_task = tokio::spawn(async move {
+            let res = tokio::io::copy(&mut stdout, &mut write_half).await;
+            (res, write_half)
+        });
+
+        let end = loop {
+            tokio::select! {
+                recv = rx.recv() => match recv {
+                    Ok(samples) => {
+                        let mut bytes = Vec::with_capacity(samples.len() * 4);
+                        for s in samples.iter() {
+                            bytes.extend_from_slice(&s.to_le_bytes());
+                        }
+                        if stdin.write_all(&bytes).await.is_err() {
+                            break GenerationEnd::ConnectionOver(Err(
+                                "ffmpeg stdin write failed (encoder died?)".to_string(),
+                            ));
+                        }
                     }
-                    if ffmpeg_stdin.write_all(&bytes).await.is_err() {
-                        break;
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::warn!(
+                            "output[{}]: feed lagged behind the pipeline by {n} message(s); \
+                             continuing with newer audio",
+                            target.label
+                        );
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        break GenerationEnd::ConnectionOver(Ok(()));
+                    }
+                },
+                changed = now_playing.changed(), if watch_alive => {
+                    if changed.is_err() {
+                        watch_alive = false;
+                        continue;
+                    }
+                    let new_song = now_playing.borrow_and_update().clone();
+                    if new_song == song {
+                        continue;
+                    }
+                    song = new_song;
+                    if target.format.inband_metadata() {
+                        break GenerationEnd::RestartEncoder;
+                    }
+                    if let Some(song_str) = song.song_string() {
+                        tokio::spawn(send_updinfo(
+                            http.clone(),
+                            target.clone(),
+                            song_str,
+                        ));
+                    }
+                },
+                joined = &mut copy_task => {
+                    let res = match joined {
+                        Ok((Ok(_), _)) => Ok(()),
+                        Ok((Err(e), _)) => {
+                            Err(format!("stream copy to {} ended: {e}", target.label))
+                        }
+                        Err(e) => Err(format!("stream copy task panicked: {e}")),
+                    };
+                    break GenerationEnd::ConnectionOver(res);
+                },
+            }
+        };
+
+        match end {
+            GenerationEnd::ConnectionOver(res) => {
+                // Whichever side ended first, tear down the rest before
+                // returning so the next retry starts from a clean slate.
+                copy_task.abort();
+                let _ = child.kill().await;
+                return res;
+            }
+            GenerationEnd::RestartEncoder => {
+                // Closing stdin sends EOF: ffmpeg flushes its final pages
+                // (the Ogg EOS that terminates this chained link) and
+                // exits; the copy task drains the remainder to the socket
+                // and returns the write half for the next link.
+                drop(stdin);
+                match tokio::time::timeout(ENCODER_FLUSH_TIMEOUT, &mut copy_task).await {
+                    Ok(Ok((Ok(_), wh))) => {
+                        let _ = child.wait().await;
+                        write_half = wh;
+                        tracing::info!(
+                            "output[{}]: restarted encoder for new metadata: {}",
+                            target.label,
+                            song.song_string().unwrap_or_default()
+                        );
+                    }
+                    Ok(Ok((Err(e), _))) => {
+                        let _ = child.kill().await;
+                        return Err(format!("connection ended during encoder restart: {e}"));
+                    }
+                    Ok(Err(e)) => {
+                        let _ = child.kill().await;
+                        return Err(format!("stream copy task panicked: {e}"));
+                    }
+                    Err(_) => {
+                        let _ = child.kill().await;
+                        return Err(format!(
+                            "encoder did not flush within {ENCODER_FLUSH_TIMEOUT:?} \
+                             during metadata restart"
+                        ));
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(n)) => {
-                    tracing::warn!(
-                        "output feed lagged behind the pipeline by {n} message(s); \
-                         continuing with newer audio"
-                    );
-                    continue;
-                }
-                Err(broadcast::error::RecvError::Closed) => break,
             }
         }
-        // Dropping `ffmpeg_stdin` here closes ffmpeg's stdin, signaling EOF
-        // so it flushes and exits cleanly if the tap itself ever closes.
-    });
-
-    let mut stream = stream;
-    let copy_result = tokio::io::copy(&mut ffmpeg_stdout, &mut stream).await;
-
-    // Whichever side ended first (feed loop, ffmpeg exiting, or the TCP
-    // connection dropping), tear down the other half before returning so
-    // the next retry starts from a clean slate.
-    feed_task.abort();
-    let _ = child.kill().await;
-
-    copy_result
-        .map(|_| ())
-        .map_err(|e| format!("stream copy to {} ended: {e}", target.label))
+    }
 }
 
 /// Builds the full list of outbound `IcecastTarget`s from the parsed
@@ -457,6 +718,7 @@ pub fn build_targets(cfg: &EngineConfig) -> Vec<IcecastTarget> {
                         format,
                         bitrate: mount.bitrate,
                         is_public: mount.is_public,
+                        stream_name: cfg.station.name.clone(),
                         label: format!("local mount #{} {}", idx + 1, mount.path),
                     }),
                     None => tracing::warn!(
@@ -502,6 +764,7 @@ pub fn build_targets(cfg: &EngineConfig) -> Vec<IcecastTarget> {
                 format,
                 bitrate: remote.bitrate,
                 is_public: remote.is_public,
+                stream_name: cfg.station.name.clone(),
                 label: format!(
                     "remote relay #{} {}:{}{}",
                     idx + 1,
@@ -538,8 +801,13 @@ mod tests {
             format,
             bitrate: 128,
             is_public: true,
+            stream_name: "Test Station".to_string(),
             label: "test".to_string(),
         }
+    }
+
+    fn no_song() -> NowPlaying {
+        NowPlaying::default()
     }
 
     // --- Handshake request construction -----------------------------------
@@ -557,6 +825,23 @@ mod tests {
         assert_eq!(hs.user, "source");
         assert_eq!(hs.password, "hackme");
         assert_eq!(hs.content_type.as_deref(), Some("audio/mpeg"));
+    }
+
+    #[test]
+    fn source_request_carries_ice_name_and_flattens_line_breaks() {
+        let mut target = test_target(OutputFormat::Mp3);
+        target.stream_name = "Radio\r\nInjected: header".to_string();
+        let text = String::from_utf8(build_source_request(&target)).unwrap();
+        assert!(text.contains("ice-name: Radio Injected: header\r\n"));
+        assert!(!text.contains("\nInjected:"));
+    }
+
+    #[test]
+    fn source_request_omits_ice_name_when_empty() {
+        let mut target = test_target(OutputFormat::Mp3);
+        target.stream_name = "  ".to_string();
+        let text = String::from_utf8(build_source_request(&target)).unwrap();
+        assert!(!text.contains("ice-name"));
     }
 
     #[test]
@@ -637,7 +922,7 @@ mod tests {
 
     #[test]
     fn ffmpeg_args_mp3_uses_libmp3lame_and_mp3_container() {
-        let args = ffmpeg_args(OutputFormat::Mp3, 128, 44100, 2);
+        let args = ffmpeg_args(OutputFormat::Mp3, 128, 44100, 2, &no_song(), 0);
         assert!(args.windows(2).any(|w| w == ["-c:a", "libmp3lame"]));
         assert!(args.windows(2).any(|w| w == ["-b:a", "128k"]));
         assert!(args.windows(2).any(|w| w == ["-f", "mp3"]));
@@ -648,31 +933,85 @@ mod tests {
 
     #[test]
     fn ffmpeg_args_aac_uses_adts_container() {
-        let args = ffmpeg_args(OutputFormat::Aac, 160, 44100, 2);
+        let args = ffmpeg_args(OutputFormat::Aac, 160, 44100, 2, &no_song(), 0);
         assert!(args.windows(2).any(|w| w == ["-c:a", "aac"]));
         assert!(args.windows(2).any(|w| w == ["-f", "adts"]));
     }
 
     #[test]
     fn ffmpeg_args_ogg_uses_libvorbis_and_ogg_container() {
-        let args = ffmpeg_args(OutputFormat::Ogg, 128, 44100, 2);
+        let args = ffmpeg_args(OutputFormat::Ogg, 128, 44100, 2, &no_song(), 0);
         assert!(args.windows(2).any(|w| w == ["-c:a", "libvorbis"]));
         assert!(args.windows(2).any(|w| w == ["-f", "ogg"]));
     }
 
     #[test]
     fn ffmpeg_args_opus_uses_libopus_and_ogg_container() {
-        let args = ffmpeg_args(OutputFormat::Opus, 96, 44100, 2);
+        let args = ffmpeg_args(OutputFormat::Opus, 96, 44100, 2, &no_song(), 0);
         assert!(args.windows(2).any(|w| w == ["-c:a", "libopus"]));
         assert!(args.windows(2).any(|w| w == ["-f", "ogg"]));
     }
 
     #[test]
     fn ffmpeg_args_flac_has_no_bitrate_flag() {
-        let args = ffmpeg_args(OutputFormat::Flac, 0, 44100, 2);
+        let args = ffmpeg_args(OutputFormat::Flac, 0, 44100, 2, &no_song(), 0);
         assert!(args.windows(2).any(|w| w == ["-c:a", "flac"]));
         assert!(args.windows(2).any(|w| w == ["-f", "flac"]));
         assert!(!args.iter().any(|a| a == "-b:a"));
+    }
+
+    #[test]
+    fn ffmpeg_args_carry_song_metadata_when_present() {
+        let song = NowPlaying {
+            title: Some("Thunderstruck".to_string()),
+            artist: Some("AC/DC".to_string()),
+        };
+        let args = ffmpeg_args(OutputFormat::Ogg, 320, 44100, 2, &song, 3);
+        assert!(args.windows(2).any(|w| w == ["-metadata", "title=Thunderstruck"]));
+        assert!(args.windows(2).any(|w| w == ["-metadata", "artist=AC/DC"]));
+        // Chained-Ogg links need distinct serial numbers.
+        assert!(args.windows(2).any(|w| w == ["-serial_offset", "3"]));
+    }
+
+    #[test]
+    fn ffmpeg_args_omit_metadata_and_serial_when_not_applicable() {
+        // No song info -> no -metadata args at all.
+        let args = ffmpeg_args(OutputFormat::Ogg, 320, 44100, 2, &no_song(), 0);
+        assert!(!args.iter().any(|a| a == "-metadata"));
+        // Non-Ogg container -> no -serial_offset even with a song set.
+        let song = NowPlaying {
+            title: Some("T".to_string()),
+            artist: None,
+        };
+        let args = ffmpeg_args(OutputFormat::Mp3, 128, 44100, 2, &song, 5);
+        assert!(!args.iter().any(|a| a == "-serial_offset"));
+        assert!(args.windows(2).any(|w| w == ["-metadata", "title=T"]));
+    }
+
+    #[test]
+    fn inband_metadata_split_matches_icecast_capabilities() {
+        // Ogg-family mounts refuse updinfo on stock Icecast; everything
+        // else takes the ICY path.
+        assert!(OutputFormat::Ogg.inband_metadata());
+        assert!(OutputFormat::Opus.inband_metadata());
+        assert!(!OutputFormat::Mp3.inband_metadata());
+        assert!(!OutputFormat::Aac.inband_metadata());
+        assert!(!OutputFormat::Flac.inband_metadata());
+    }
+
+    #[test]
+    fn now_playing_song_string_formats() {
+        let both = NowPlaying {
+            title: Some("Title".to_string()),
+            artist: Some("Artist".to_string()),
+        };
+        assert_eq!(both.song_string().as_deref(), Some("Artist - Title"));
+        let title_only = NowPlaying {
+            title: Some("Title".to_string()),
+            artist: None,
+        };
+        assert_eq!(title_only.song_string().as_deref(), Some("Title"));
+        assert_eq!(NowPlaying::default().song_string(), None);
     }
 
     #[test]
@@ -791,7 +1130,7 @@ mod tests {
             return;
         }
 
-        let mut child = build_ffmpeg_command(OutputFormat::Mp3, 128)
+        let mut child = build_ffmpeg_command(&test_target(OutputFormat::Mp3), &no_song(), 0)
             .spawn()
             .expect("ffmpeg should spawn");
 
