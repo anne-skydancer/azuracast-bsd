@@ -58,6 +58,13 @@ pub const CP_TIMEOUT: Duration = Duration::from_secs(30);
 /// Resolves `uri` (the bare path/URI extracted from a parsed annotation
 /// string) to a local file via the `cp` callback.
 pub async fn resolve_media(client: &CallbackClient, uri: &str) -> Result<ResolvedMedia, String> {
+    // Under Liquidsoap, `media:...` URIs reached `cp` via the `media:`
+    // protocol *handler*, which only ever receives the remainder after
+    // the scheme -- and PHP's cp side (CopyCommand -> getLocalPath())
+    // joins whatever it's given verbatim onto the media storage root.
+    // Confirmed on a real install: passing the scheme through produced
+    // "<storage root>/media:Artist/..." -> ENOENT for every AutoDJ track.
+    let uri = uri.strip_prefix("media:").unwrap_or(uri);
     let resp = client.call_cp(uri, CP_TIMEOUT).await?;
     Ok(ResolvedMedia {
         local_path: PathBuf::from(resp.uri),
