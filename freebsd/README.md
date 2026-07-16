@@ -31,7 +31,7 @@ the one rc.d script that must run standalone at jail boot, documents the
 |---|---|---|---|
 | `mariadb` (name configurable via `MARIADB_JAIL_NAME`) | value of `MARIADB_JAIL_IP`/`MARIADB_JAIL_IP6` in `env.conf` | Database only | [`freebsd/mariadb/`](mariadb/README.md) |
 | `webapp` (name configurable via `WEBAPP_JAIL_NAME`) | value of `WEBAPP_JAIL_IP`/`WEBAPP_JAIL_IP6` in `env.conf` | nginx, php-fpm, Valkey, Centrifugo, SFTPGo, cron, supervisord | [`freebsd/webapp/`](webapp/README.md) |
-| one jail per station | (existing, per-station, whatever you've named them) | Audio frontend (Icecast) | Icecast itself already set up outside this change per jail — see Phase 1's Risk #1 in the project plan re: the custom Icecast-KH fork, still unaddressed. [`freebsd/icecast/`](icecast/README.md) is a *template* (not a fixed single jail like the two rows above) that makes an already-running Icecast jail's supervisord remotely manageable by AzuraCast's PHP side — it does not install or build Icecast itself. |
+| one jail per station | (existing, per-station, whatever you've named them) | Audio frontend (Icecast) | Stock `audio/icecast` from ports works — the custom Icecast-KH fork Docker used is not needed (see "Known open items" below). [`freebsd/icecast/`](icecast/README.md) is a *template* (not a fixed single jail like the two rows above) that makes an already-running Icecast jail's supervisord remotely manageable by AzuraCast's PHP side — it does not install or build Icecast itself. |
 
 `jail.conf.d/mariadb.conf` and `jail.conf.d/webapp.conf` hold the actual
 jail stanzas (generated from the `.tmpl` files by
@@ -49,28 +49,27 @@ anything else in either subdirectory.
    scoped specifically to `webapp`'s IP (the value of `WEBAPP_JAIL_IP`
    in `env.conf`), so get the DB up before starting `webapp`.
 3. Provision `webapp` (see `webapp/README.md`).
-4. Deploy the AzuraCast PHP application itself into `webapp` (git
-   clone/composer install/frontend build) — this isn't covered by
-   either subdirectory, which only set up the surrounding OS-level
-   platform, not the app deployment step. Then build and install the
-   Rust streaming engine binary via `freebsd/webapp/build-engine.sh`
-   (see `freebsd/webapp/README.md`'s setup order, step 9) — without
-   this, no station can actually start.
+4. Deploy the AzuraCast PHP application itself into `webapp` — follow
+   [`INSTALL.md`](../INSTALL.md) steps 5–8 (clone to **exactly**
+   `/var/azuracast/www` — the path is not a free choice, see that
+   step's explanation — then composer/npm builds, DB configuration,
+   and `freebsd/webapp/build-engine.sh` for the Rust streaming engine
+   binary, without which no station can start).
 5. Confirm `webapp` can reach `mariadb` on the value of `MARIADB_PORT` in
    `env.conf`. Restricting network
    access beyond that (via `pf` or otherwise) is your own firewall
    policy to set up if you want it — out of scope for this project,
    which relies on jail isolation as the actual security boundary.
 
-## What's still a stub at the end of this phase
+## The streaming engine
 
-Per the project plan, each station's actual backend (currently
-Liquidsoap) is intentionally left as a placeholder in this phase — the
-goal here is proving the *platform* (jails, networking, MariaDB, the
-web stack) is solid before the streaming-engine replacement work
-starts. See `engine/SPEC.md` for the behavioral spec that replacement
-engine must satisfy, and the project plan file for the phase-by-phase
-sequencing.
+Each station's backend is this fork's own Rust streaming engine
+(`engine/` at the repo root — decode, crossfade, replaygain, live-DJ
+harbor, HLS, Icecast source output, in-stream metadata), built and
+installed by `freebsd/webapp/build-engine.sh`. Liquidsoap is gone
+entirely; there is nothing OCaml anywhere in this stack. See
+`engine/SPEC.md` for the behavioral contract it was built against and
+`engine/README.md` for its architecture.
 
 ## Dual-stack (IPv4 + IPv6) audit
 
@@ -95,13 +94,15 @@ checked whether the application-layer configs under `mariadb/` and
 
 ## Known open items
 
-- Neither jail's scripts have been run against a real FreeBSD box as
-  part of this change — treat package names, paths, and versions as a
-  well-researched first draft. Each subdirectory's README has a "things
-  worth double-checking" section calling out specific unconfirmed
-  points (a few inferred PHP 8.5 extension package names,
-  `audiowaveform` having no FreeBSD port, MariaDB's exact rc.d service
-  name).
+- This tree has been exercised end-to-end on a real FreeBSD 15.1 host
+  (2026-07) — a station built from it is live on air. The confirmed
+  fixes from that install are folded into the scripts/configs and
+  called out inline (php-fpm pools, the rc.subr `${name}_user`
+  collision, proxy_params, SFTPGo's build method, Icecast 2.5-beta
+  hardening). Each subdirectory's README still has a "things worth
+  double-checking" section for the few points that remain
+  environment-dependent (`audiowaveform` has no FreeBSD port, the
+  OpenSSL 3.0→3.5 ports transition).
 - **Resolved by architecture, not by porting it**: the custom Icecast-KH
   fork (`ghcr.io/azuracast/icecast-ac`) the Docker build used to pull as
   a prebuilt Linux image was previously this project's highest-risk open

@@ -7,12 +7,14 @@ handful of FreeBSD jails by hand and deploying the application into them. This d
 linear, start-to-finish path; the `freebsd/*/README.md` files it links to are the detailed
 per-component references.
 
-**Status:** this fork's `freebsd/` scripts and the `engine/` Rust build have been written against
-FreeBSD's documented package/port behavior and this project's own reference deployment, but have
-not yet been exercised end-to-end against a real FreeBSD box as of this writing. Package names,
-paths, and versions should be treated as a well-researched first draft — if something doesn't
-match what you see on your box, that's expected territory, not a sign you've misread these
-instructions.
+**Status:** this path has been exercised **end-to-end on a real FreeBSD 15.1 host** (2026-07): a
+station built this way is live on air — engine → per-station Icecast jail → nginx `/listen` proxy,
+with HTTPS via a real Let's Encrypt certificate, in-stream song metadata, and automatic
+wedge-recovery. The hard-won fixes from that install (php-fpm pool configs, the rc.d
+`${name}_user` collision, the mandatory deploy path, Icecast 2.5-beta hardening, source-limit
+headroom, the combined TLS PEM) are all committed — following this document as written lands on
+the battle-tested configuration. Where a specific step was confirmed the hard way, the linked
+README says so.
 
 ## Prerequisites
 
@@ -97,11 +99,15 @@ install). `00-packages.sh` creates `/var/azuracast/www` as an empty directory, s
 ```sh
 git clone <your-fork-url> /var/azuracast/www
 chown -R azuracast:azuracast /var/azuracast/www
+git config --global --add safe.directory /var/azuracast/www
 cd /var/azuracast/www
 ```
 
 (The `chown` matters: if you clone as root, the app — which runs as `azuracast` — can't write its
-own caches or have files deployed over it later.)
+own caches or have files deployed over it later. The `safe.directory` line matters for the same
+reason from the other side: once the checkout is `azuracast`-owned, every future `git pull` you
+run as root fails with "detected dubious ownership" until root's git is told the directory is
+trusted — one-time setup, confirmed on a real install.)
 
 If your repository is private, either:
 - use an SSH remote (`git clone git@github.com:<you>/<your-fork>.git ...`) with a deploy key added
@@ -168,6 +174,7 @@ configure the station's frontend connection details to point at the jail directl
 ```sh
 cd /var/azuracast/www
 git pull
+git log -1 --oneline   # VERIFY the hash is the commit you expect before rebuilding anything
 composer install --no-dev --no-ansi --no-interaction
 composer dump-autoload --optimize --classmap-authoritative
 npm ci --include=dev && npm run build
@@ -175,10 +182,42 @@ sh freebsd/webapp/build-engine.sh   # only strictly required if engine/ changed,
 service azuracast restart
 ```
 
+Notes from the reference deployment's own update loop:
+
+- **Verify, don't assume.** The two silent ways an "update" deploys nothing: the `git pull` failed
+  (dubious-ownership when run as root without the `safe.directory` config from step 5, or a
+  network error scrolled past) and the engine build was skipped (a successful build that compiled
+  new code prints a `Compiling azuracast-engine` line; `Finished` alone means the binary was
+  already current). Check `git log -1` and watch for `Compiling` — both bit the reference install.
+- For an engine-only change, a lighter cycle than `service azuracast restart` is to restart just
+  the station backends: `supervisorctl restart station_<id>_backend` per station (or
+  `su -m azuracast -c 'php /var/azuracast/www/backend/bin/console azuracast:radio:restart'`).
+- Any restart drops each station's source connection for a few seconds. Listeners ride it out on
+  the station's fallback file **if you installed one** (see `freebsd/icecast/README.md`, step 10)
+  — browser players never reconnect on their own otherwise.
+
+## Operational gotchas (all confirmed on the reference install)
+
+- **After cycling an Icecast jail** (`service jail restart <station-jail>`), the station frontend
+  may come up `STOPPED` — `azuracast:radio:restart` races the jail's freshly-booting supervisord
+  and its start can silently miss. Fix: `jexec <station-jail> supervisorctl start
+  station_<id>_frontend`.
+- **"No sound" after any restart usually isn't the stream.** Players (VLC, browser audio) hold a
+  dead socket across an Icecast restart and sit in silence on top of a healthy mount — reconnect
+  the player *first*, then diagnose.
+- **Saving station configuration restarts the frontend** (this fork deliberately restarts instead
+  of SIGHUP-reloading Icecast — the 2.5 beta degrades after a HUP). Treat station config edits as
+  brief announced maintenance: every listener gets bumped to the fallback and back.
+- **Duplicate `mount +=` lines in a jail stanza** produce nullfs's cryptic "Resource deadlock
+  avoided" at jail start. Check for accidental duplicates before suspecting anything deeper.
+- **Media over NFS**: mount it via the *jail's* fstab mechanism (`mount += ...` in the stanza),
+  not rc.local, and keep the station's fallback file on jail-local disk — its whole job is to
+  play when remote things fail.
+
 ## If something doesn't work
 
-This is a new fork's install path, not a battle-tested one yet — see the "Status" note above.
-Each `freebsd/*/README.md` has its own "things worth double-checking" section calling out specific
-unconfirmed points (exact package names, a couple of inferred PHP 8.5 extension names,
-`audiowaveform` having no FreeBSD port). If you hit something not covered there, that's useful
-information to bring back, not necessarily a sign of a mistake in these instructions.
+Each `freebsd/*/README.md` has a "things worth double-checking" section for its component, with
+the confirmed-on-real-hardware failure modes called out inline where they were found
+(php-fpm pools, rc.subr variable collision, proxy_params, Icecast beta wedges). If you hit
+something not covered there, that's useful information to bring back, not necessarily a sign of a
+mistake in these instructions.

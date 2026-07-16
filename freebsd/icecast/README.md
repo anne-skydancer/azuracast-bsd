@@ -165,7 +165,35 @@ but every step applies verbatim to any other station's Icecast jail
    Read-only: certificate issuance/renewal happens on the webapp side;
    this jail only ever reads.
 
-Repeat steps 1–9 (with a different `icecast.env`, or different CLI args)
+10. **Install the station's fallback file** (strongly recommended):
+    AzuraCast's generated `icecast.xml` declares a fallback mount named
+    `/fallback-[<bitrate>].<ext>` per mount (e.g. `fallback-[320].ogg`),
+    resolved against Icecast's webroot. Without the file, every source
+    drop — deploys, config saves (which restart the frontend in this
+    fork), engine reconnects — hard-disconnects all listeners, and
+    browser players never reconnect on their own; with it, listeners
+    hear the fallback loop for a few seconds and snap back to the live
+    stream automatically (`fallback-override: all` is already in the
+    generated config). Transcode the stock AzuraCast jingle (or any
+    audio you prefer) to match each mount's format/bitrate — run the
+    ffmpeg step in the **webapp** jail (it has ffmpeg), handing off via
+    the shared station config dir, e.g. for a 320kbps Ogg mount:
+
+    ```sh
+    # webapp jail:
+    ffmpeg -i /var/azuracast/www/resources/error.mp3 -c:a libvorbis -b:a 320k \
+        -ar 44100 -ac 2 '/var/azuracast/stations/<station>/config/fallback-[320].ogg'
+    # this jail:
+    mv '/var/azuracast/stations/<station>/config/fallback-[320].ogg' /usr/local/share/icecast/web/
+    ```
+
+    Keep the file on this jail's **local disk** (never an NFS mount) —
+    its entire job is to play when something else has failed. No
+    restart needed: Icecast opens it at the moment a source drops.
+    Confirmed working on a real install, including surviving the exact
+    failure (a leaked source slot) that motivated it.
+
+Repeat steps 1–10 (with a different `icecast.env`, or different CLI args)
 for every additional station's Icecast jail.
 
 ## What this template deliberately does not contain
