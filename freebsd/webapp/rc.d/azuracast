@@ -99,6 +99,7 @@ command="${supervisord_bin}"
 command_args="-c ${supervisord_conf}"
 
 start_precmd="azuracast_prestart"
+start_postcmd="azuracast_poststart"
 stop_cmd="azuracast_stop"
 status_cmd="azuracast_status"
 
@@ -187,6 +188,38 @@ azuracast_prestart()
     azuracast_wait_for_db
     azuracast_run_setup
     return 0
+}
+
+# Station programs are autostart=false in their generated supervisord
+# configs -- AzuraCast starts them on demand. At boot, "on demand" is
+# this hook: azuracast:setup --init (in prestart) does attempt a radio
+# restart itself, but supervisord isn't running yet at that point, so it
+# only produces harmless "cURL error 7 ... /var/run/supervisor.sock"
+# warnings (confirmed on a real install). Restarting the stations AFTER
+# supervisord is up is what actually brings broadcasts back at boot.
+azuracast_poststart()
+{
+    console="${azuracast_path}/backend/bin/console"
+
+    if [ ! -f "${console}" ]; then
+        return 0
+    fi
+
+    i=0
+    while ! /usr/local/bin/supervisorctl -c "${supervisord_conf}" status >/dev/null 2>&1; do
+        i=$((i + 1))
+        if [ "$i" -ge 15 ]; then
+            echo "WARNING: supervisord not answering after 15s; start stations from the web UI." 1>&2
+            return 0
+        fi
+        sleep 1
+    done
+
+    azuracast_export_env_file
+
+    echo "Starting radio stations..."
+    su -m "${azuracast_setup_user}" -c "cd '${azuracast_path}' && '${php_bin}' '${console}' azuracast:radio:restart" \
+        || echo "NOTE: station autostart failed (non-fatal; start stations from the web UI)." 1>&2
 }
 
 azuracast_stop()
