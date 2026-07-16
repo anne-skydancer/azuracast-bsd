@@ -73,6 +73,14 @@ use crate::decode::{PIPELINE_CHANNELS, PIPELINE_SAMPLE_RATE};
 /// appropriate here.
 const RECONNECT_BACKOFF: Duration = Duration::from_secs(5);
 
+/// Upper bound on the whole connect-and-handshake exchange. Without this,
+/// a server that accepts the TCP connection but never answers the SOURCE
+/// request wedges the output task forever -- confirmed on a real install,
+/// where Icecast 2.5-beta held a reconnecting source's request without
+/// responding (its access log never even recorded the attempt) and the
+/// engine sat "connecting" for minutes while the retry loop never fired.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// Conventional default source-client username used by Icecast/Liquidsoap
 /// when a station doesn't configure an explicit one (the local
 /// `[icecast_output]` frontend has no username field at all -- source auth
@@ -361,7 +369,14 @@ async fn run_output_once(
         target.port,
         target.mount
     );
-    let stream = connect_and_handshake(target).await?;
+    let stream = tokio::time::timeout(HANDSHAKE_TIMEOUT, connect_and_handshake(target))
+        .await
+        .map_err(|_| {
+            format!(
+                "handshake with {}:{} timed out after {HANDSHAKE_TIMEOUT:?}",
+                target.host, target.port
+            )
+        })??;
     tracing::info!("output[{}]: connected, streaming", target.label);
 
     let mut child = build_ffmpeg_command(target.format, target.bitrate)
