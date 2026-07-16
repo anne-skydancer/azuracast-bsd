@@ -246,7 +246,13 @@ class Icecast extends AbstractFrontend
             ],
             'logging' => [
                 'accesslog' => 'icecast_access.log',
-                'errorlog' => '/dev/stderr',
+                // Docker wanted stderr so supervisord could capture it, but
+                // Icecast resolves errorlog relative to logdir, so outside a
+                // Linux container "/dev/stderr" becomes
+                // "<logdir>//dev/stderr" -> "FATAL: could not open error
+                // logging" and the frontend crash-loops (confirmed on a real
+                // FreeBSD install against the icecast 2.5-beta port).
+                'errorlog' => $this->environment->isDocker() ? '/dev/stderr' : 'icecast_error.log',
                 'loglevel' => $this->environment->isProduction() ? self::LOGLEVEL_WARN : self::LOGLEVEL_INFO,
                 'logsize' => 10000,
             ],
