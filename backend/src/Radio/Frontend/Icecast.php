@@ -72,19 +72,16 @@ class Icecast extends AbstractFrontend
 
     public function reload(Station $station): void
     {
-        if ($this->hasCommand($station)) {
-            $programName = $this->getSupervisorFullName($station);
-
-            try {
-                $this->getSupervisor($station)->signalProcess($programName, 'HUP');
-                $this->logger->info(
-                    'Adapter "' . self::class . '" reloaded.',
-                    ['station_id' => $station->id, 'station_name' => $station->name]
-                );
-            } catch (SupervisorLibException $e) {
-                $this->handleSupervisorException($e, $programName, $station);
-            }
-        }
+        // Upstream sends SIGHUP here (a non-destructive config reload).
+        // Deliberately changed to a full restart in this fork: stock
+        // Icecast 2.5-beta (the FreeBSD port this fork targets) degrades
+        // after a HUP reload -- observed on a real install as a wedged
+        // request pipeline after the SSL-renewal hook's reload, and as
+        // multi-minute listener connection stalls in the reloaded state
+        // that vanished after a clean restart. A restart costs a few
+        // seconds of dropout (the streaming engine reconnects on its own);
+        // a degraded reload costs an outage nobody gets notified about.
+        $this->restart($station);
     }
 
     public function getNowPlaying(Station $station, bool $includeClients = true): Result
