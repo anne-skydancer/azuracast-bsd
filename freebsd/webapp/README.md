@@ -35,6 +35,7 @@ This jail only needs to be able to *reach* MariaDB over TCP at
 | `crontab` | Per-user crontab (for the `azuracast` user) replacing supercronic. |
 | `rc.d/azuracast` | rc.d script — waits for MariaDB, runs one-time setup/migrations, then starts supervisord. Install to `/usr/local/etc/rc.d/azuracast`. |
 | `nginx.conf` | Adapted nginx config (dual-stack `listen` directives) — install to `/usr/local/etc/nginx/nginx.conf`. |
+| `php-fpm.d/www.conf`, `php-fpm.d/internal.conf` | php-fpm pool configs — install to `/usr/local/etc/php-fpm.d/`, **replacing** the stock `www.conf`. Required: the stock FreeBSD pool (user `www`, TCP `127.0.0.1:9000`) matches neither the unix sockets `nginx.conf`'s upstreams expect nor the `azuracast` file-ownership model, and was confirmed on a real install to make every PHP request fail silently (no sockets created, worker stderr discarded, no error log configured). |
 | `centrifugo-config.toml` | Adapted Centrifugo config — install to `/var/azuracast/centrifugo/config.toml`. |
 | `sftpgo.json` | Adapted SFTPGo config — install to `/var/azuracast/sftpgo/sftpgo.json`. |
 | `valkey.conf` | Valkey config, scoped to IPv4 + IPv6 loopback + unix socket — install to `/usr/local/etc/valkey.conf` (or wherever the package's `valkey_config` rcvar points). |
@@ -77,10 +78,19 @@ This jail only needs to be able to *reach* MariaDB over TCP at
    cp freebsd/webapp/supervisord.conf /usr/local/etc/supervisord.conf
    ```
 
-5. Copy the nginx config:
+5. Copy the nginx config and the php-fpm pool configs:
    ```sh
    cp freebsd/webapp/nginx.conf /usr/local/etc/nginx/nginx.conf
+   cp freebsd/webapp/php-fpm.d/www.conf /usr/local/etc/php-fpm.d/www.conf
+   cp freebsd/webapp/php-fpm.d/internal.conf /usr/local/etc/php-fpm.d/internal.conf
    ```
+   The pool configs are NOT optional and the `www.conf` copy deliberately
+   **replaces** the package's stock pool — `nginx.conf`'s upstreams point
+   at the two unix sockets these pools create
+   (`/var/run/php-fpm-www.sock`, `/var/run/php-fpm-internal.sock`);
+   with the stock pool left in place those sockets never exist and every
+   PHP request fails silently (see `php-fpm.d/www.conf`'s header comment
+   for the full confirmed-on-real-hardware failure mode).
    Also apply the M3U8 MIME-type fix Docker's `nginx.sh` applies
    (`application/vnd.apple.mpegurl` -> `application/x-mpegurl`) to
    `/usr/local/etc/nginx/mime.types` by hand — this wasn't scripted

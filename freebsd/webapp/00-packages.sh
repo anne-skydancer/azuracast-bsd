@@ -116,16 +116,43 @@ pkg install -y \
     node22 \
     npm-node22
 
-# Enable FFI at the php.ini level (mirrors php.sh's
-# `echo 'ffi.enable="true"' >> /usr/local/etc/php/conf.d/ffi.ini`).
-# Used at runtime for StereoTool inspection.
+# Confirmed during a real install: there is no /usr/local/etc/php/conf.d/
+# subdirectory on FreeBSD's php85 port -- ext-*.ini files (one per
+# package-installed extension, e.g. ext-20-gd.ini) live directly under
+# /usr/local/etc/php/ itself, and that flat directory is what PHP's
+# compiled-in scan_dir actually reads. An earlier version of this script
+# wrote into .../php/conf.d/, which not only doesn't get scanned by PHP
+# but doesn't even exist -- `mkdir -p /usr/local/etc/php` (no conf.d)
+# ran fine, then the next line's `>>` failed outright ("No such file or
+# directory"), aborting the whole script under `set -e` before it ever
+# reached the user/directory-tree setup further down. Fixed to write
+# flat files matching the port's own ext-NN-name.ini numbering
+# convention (NN = load order; pkg-installed extensions use low numbers
+# like 10/20/30, so these use high numbers to load after all of them).
 mkdir -p /usr/local/etc/php
-echo 'ffi.enable="true"' >> /usr/local/etc/php/conf.d/ffi.ini
+echo 'ffi.enable="true"' >> /usr/local/etc/php/ext-90-ffi-enable.ini
 
 # Enable opcache -- it's compiled into base php85 (no separate package
 # to install, see the note above) but still needs turning on explicitly.
-echo 'opcache.enable=1' >> /usr/local/etc/php/conf.d/opcache.ini
-echo 'opcache.enable_cli=0' >> /usr/local/etc/php/conf.d/opcache.ini
+echo 'opcache.enable=1' >> /usr/local/etc/php/ext-91-opcache-enable.ini
+echo 'opcache.enable_cli=0' >> /usr/local/etc/php/ext-91-opcache-enable.ini
+
+# Defensive: FreeBSD's php.mk framework installs an ext-NN-name.ini.sample
+# alongside every live ext-NN-name.ini (confirmed on a real install --
+# normally BOTH exist, and the live one is what PHP reads). But on
+# upgrade/reinstall paths where the framework declines to clobber a
+# possibly-hand-edited file, only the .sample can end up present, which
+# leaves that extension silently unloaded (`php -m` won't list it, and
+# composer/the app fail on the missing ext-* requirement). Activating
+# any orphaned .sample is safe and idempotent: this only ever creates
+# the live .ini if it doesn't already exist, never overwrites one.
+for _sample in /usr/local/etc/php/ext-*.ini.sample; do
+    [ -e "${_sample}" ] || continue
+    _live="${_sample%.sample}"
+    if [ ! -e "${_live}" ]; then
+        cp "${_sample}" "${_live}"
+    fi
+done
 
 # --- System user (mirrors util/docker/common/add_user.sh) -------------------
 # The Docker image runs the app as a dedicated unprivileged `azuracast`
