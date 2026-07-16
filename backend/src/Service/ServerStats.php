@@ -341,11 +341,16 @@ final class ServerStats
                 continue;
             }
 
+            // The Address column's contents vary by interface type (a MAC
+            // for ethernet/epair, the literal interface name for lo0,
+            // absent entirely for some tunnels) -- so rather than guess
+            // its shape, skip to the first numeric column: that's Ipkts.
+            $colCount = count($cols);
             $dataStart = 3;
-            if (isset($cols[3]) && str_contains($cols[3], ':')) {
-                $dataStart = 4;
+            while ($dataStart < $colCount && !is_numeric($cols[$dataStart])) {
+                $dataStart++;
             }
-            if (count($cols) < $dataStart + 8) {
+            if ($colCount < $dataStart + 8) {
                 continue;
             }
 
