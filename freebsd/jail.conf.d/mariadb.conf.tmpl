@@ -9,8 +9,12 @@
     # actually got created is removed -- a start attempt that fails partway
     # (prestart half-done, jail creation error) leaves an orphaned epair
     # behind that blocks every later start with "interface already exists".
-    # The destroy-before-create makes prestart self-healing against that.
-    exec.prestart  = "ifconfig @@MARIADB_JAIL_EPAIR@@a destroy 2>/dev/null || true";
+    # The destroy-if-present makes prestart self-healing against that
+    # (probe first rather than `destroy || true`, so a GENUINE destroy
+    # failure still aborts the start loudly instead of being masked;
+    # jail(8) runs exec.* commands via /bin/sh -c, so the shell syntax
+    # here is interpreted by a real shell).
+    exec.prestart  = "if ifconfig @@MARIADB_JAIL_EPAIR@@a >/dev/null 2>&1; then ifconfig @@MARIADB_JAIL_EPAIR@@a destroy; fi";
     exec.prestart += "ifconfig @@MARIADB_JAIL_EPAIR@@ create";
     exec.prestart += "ifconfig @@VM_PUBLIC_BRIDGE@@ addm @@MARIADB_JAIL_EPAIR@@a";
     exec.prestart += "ifconfig @@MARIADB_JAIL_EPAIR@@a up";
