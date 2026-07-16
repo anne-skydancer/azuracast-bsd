@@ -554,11 +554,16 @@ impl StreamClock {
     }
 }
 
-/// Sleeps (if needed) to keep `clock` paced to real wall-clock time, applies
-/// `processor` to `samples[from_frame..to_frame)` (in frames) when
-/// `should_process` is true and a processor is actually configured, then
-/// writes the (possibly processed) chunk to `output` and commits it to
-/// `clock`. Every AutoDJ-path body write and live-path straight-through
+/// Frames per emission sub-chunk (~100ms at the pipeline rate): small
+/// enough that downstream consumers (Icecast, listeners, the HLS tap)
+/// receive a genuinely continuous real-time stream, large enough that
+/// per-chunk overhead (one tokio sleep + one broadcast send) is trivial.
+const EMIT_CHUNK_FRAMES: usize = PIPELINE_SAMPLE_RATE as usize / 10;
+
+/// Sleeps and writes `samples[from_frame..to_frame)` (in frames) to
+/// `output` in real-time-paced ~100ms sub-chunks, applying `processor`
+/// per sub-chunk when `should_process` is true and a processor is actually
+/// configured. Every AutoDJ-path body write and live-path straight-through
 /// write goes through this. A no-op (no sleep, no write, no clock advance,
 /// no processing) when the range is empty.
 ///
@@ -575,18 +580,31 @@ async fn paced_write_frame_range(
     from_frame: usize,
     to_frame: usize,
 ) {
-    if from_frame >= to_frame {
-        return;
-    }
-    pace(clock, (to_frame - from_frame) as u64).await;
+    // Emit in ~100ms sub-chunks, pacing EACH against the stream clock --
+    // never the whole range at once. The previous single
+    // pace-then-write of the entire range slept for the full range
+    // duration (minutes, for a track body) while emitting NOTHING, then
+    // dumped the whole body in one burst: downstream, Icecast's
+    // source-timeout (10s) reaped the idle source connection long before
+    // the burst arrived, so the mount only ever existed for an instant
+    // at each track boundary and listeners could never connect
+    // (confirmed on a real install -- the engine spent each "playing"
+    // track parked in a single multi-minute kevent sleep). Real-time
+    // streaming means a continuous trickle, not scheduled batch mail.
+    let mut chunk_start = from_frame;
+    while chunk_start < to_frame {
+        let chunk_end = (chunk_start + EMIT_CHUNK_FRAMES).min(to_frame);
+        pace(clock, (chunk_end - chunk_start) as u64).await;
 
-    let slice = &samples[from_frame * 2..to_frame * 2];
-    if should_process && !matches!(processor, AudioProcessor::None) {
-        let mut chunk = slice.to_vec();
-        processor.process(&mut chunk).await;
-        output.write_all(&chunk);
-    } else {
-        output.write_all(slice);
+        let slice = &samples[chunk_start * 2..chunk_end * 2];
+        if should_process && !matches!(processor, AudioProcessor::None) {
+            let mut chunk = slice.to_vec();
+            processor.process(&mut chunk).await;
+            output.write_all(&chunk);
+        } else {
+            output.write_all(slice);
+        }
+        chunk_start = chunk_end;
     }
 }
 
@@ -607,16 +625,11 @@ async fn paced_write_all(
     if samples.is_empty() {
         return;
     }
-    let chunk_frames = (samples.len() / PIPELINE_CHANNELS as usize) as u64;
-    pace(clock, chunk_frames).await;
-
-    if should_process && !matches!(processor, AudioProcessor::None) {
-        let mut chunk = samples.to_vec();
-        processor.process(&mut chunk).await;
-        output.write_all(&chunk);
-    } else {
-        output.write_all(samples);
-    }
+    // Same ~100ms sub-chunked emission as `paced_write_frame_range` (see
+    // its comment for why single-shot pace-then-write breaks streaming);
+    // crossfade windows are seconds long, well past Icecast's patience.
+    let frames = samples.len() / PIPELINE_CHANNELS as usize;
+    paced_write_frame_range(output, clock, processor, should_process, samples, 0, frames).await;
 }
 
 /// Shared sleep-then-commit sequence used by both `paced_write_frame_range`
