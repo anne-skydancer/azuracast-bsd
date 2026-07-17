@@ -82,7 +82,16 @@ echo "$(stamp) sync starting: ${MEDIA_SOURCE}/ -> ${MIRROR_PATH}/"
 # --delete     mirror deletions (guarded by the sentinel above)
 # --partial    resume interrupted large files on the next run
 # --exclude    keep the sentinel itself out of the library
+# --chown      force the mirror to be owned by uid/gid 1001 (the
+#              azuracast user, by this deployment's fixed convention --
+#              numeric so it works whether this runs on the host or in a
+#              jail, whatever the user is *named* there). Without it, -a
+#              run as root preserves the NAS's ownership onto the mirror
+#              and PHP gets "Failed to open directory: Permission
+#              denied" on its own media dir (confirmed live) -- and any
+#              manual chown gets silently reverted by the next sync.
 rsync -a --delete --partial \
+    --chown 1001:1001 \
     --exclude "/${SENTINEL}" \
     "${MEDIA_SOURCE}/" "${MIRROR_PATH}/"
 
