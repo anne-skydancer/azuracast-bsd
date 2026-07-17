@@ -9,6 +9,7 @@ use App\Entity\Interfaces\SongInterface;
 use App\Event\Media\GetAlbumArt;
 use App\Exception\Http\RateLimitExceededException;
 use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\ServerException;
 use RuntimeException;
 use Throwable;
 
@@ -54,17 +55,22 @@ abstract class AbstractAlbumArtHandler
                 return;
             }
 
-            // A slow or unreachable art service is that SERVICE's problem,
-            // not the track's: soft-skip so the next handler in the chain
-            // still gets its chance, instead of aborting the whole lookup
-            // (which also negative-caches the song for two weeks upstream
-            // in RemoteAlbumArt). Observed live: Cover Art Archive
-            // (archive.org) timeouts were stealing art from tracks Deezer
-            // or Last.fm could have served.
+            // A slow, unreachable, or overloaded art service is that
+            // SERVICE's problem, not the track's: soft-skip so the next
+            // handler in the chain still gets its chance, instead of
+            // aborting the whole lookup (which also negative-caches the
+            // song for two weeks upstream in RemoteAlbumArt). Observed
+            // live, twice: Cover Art Archive (archive.org) timeouts, then
+            // MusicBrainz "server is currently busy" 5xx responses, each
+            // stealing art from tracks Deezer or Last.fm could have
+            // served. ServerException = any 5xx: the service is having a
+            // bad moment; the track is fine.
             if (
                 $e instanceof ConnectException
+                || $e instanceof ServerException
                 || false !== stripos($e->getMessage(), 'timed out')
                 || false !== stripos($e->getMessage(), 'timeout')
+                || false !== stripos($e->getMessage(), 'currently busy')
             ) {
                 return;
             }
