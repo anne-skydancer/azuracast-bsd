@@ -119,15 +119,26 @@ return static function (CallableEventDispatcherInterface $dispatcher) {
         App\Notification\Check\ServiceCheck::class
     );
 
+    // Album-art source chain -- FIRST successful handler wins (setAlbumArt
+    // stops propagation), so priority order IS the preference order.
+    // Deliberately changed from upstream's Last.fm-first: Cover Art
+    // Archive serves canonical release scans (best quality when it hits),
+    // Deezer (keyless, fast, ~1000px covers) catches most of what CAA
+    // misses, and Last.fm's anything-goes catalog is the last resort.
     $dispatcher->addCallableListener(
         Event\Media\GetAlbumArt::class,
-        App\Media\AlbumArtHandler\LastFmAlbumArtHandler::class,
+        App\Media\AlbumArtHandler\MusicBrainzAlbumArtHandler::class,
+        priority: 20
+    );
+    $dispatcher->addCallableListener(
+        Event\Media\GetAlbumArt::class,
+        App\Media\AlbumArtHandler\DeezerAlbumArtHandler::class,
         priority: 10
     );
     $dispatcher->addCallableListener(
         Event\Media\GetAlbumArt::class,
-        App\Media\AlbumArtHandler\MusicBrainzAlbumArtHandler::class,
-        priority: -10
+        App\Media\AlbumArtHandler\LastFmAlbumArtHandler::class,
+        priority: 0
     );
 
     $dispatcher->addCallableListener(
