@@ -112,6 +112,27 @@ checked whether the application-layer configs under `mariadb/` and
 - `configure-db.sh`'s default DB host prompt intentionally still
   defaults to IPv4 (`MARIADB_JAIL_IP`) — see `webapp/README.md` for why.
 
+## Media mirror (NAS-independent playback)
+
+If the music library lives on a NAS, don't feed the NFS mount to
+AzuraCast directly — the reference deployment's NAS reboots far slower
+than the server after power cuts, which meant a cold boot played the
+error jingle until the NAS appeared (and the `soft` NFS mount was the
+standing suspect for occasional mid-track skips). Instead, keep a local
+mirror on the host and nullfs-mount *that* into the jail:
+
+```
+NAS (source of truth) --rsync, cron--> local mirror --nullfs--> jail media path
+```
+
+[`media-mirror-sync.sh`](media-mirror-sync.sh) is the host-side sync
+script — sentinel-guarded so an unmounted NAS can never trick
+`rsync --delete` into emptying the mirror; its header is the full
+install procedure (rsync package, cron line with `lockf`, first-sync,
+and repointing the jail's media mount). Playback then survives any NAS
+outage indefinitely; new music appears one cron cycle after you add it
+on the NAS.
+
 ## Known open items
 
 - This tree has been exercised end-to-end on a real FreeBSD 15.1 host
