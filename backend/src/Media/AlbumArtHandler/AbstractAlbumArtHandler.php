@@ -8,6 +8,7 @@ use App\Container\LoggerAwareTrait;
 use App\Entity\Interfaces\SongInterface;
 use App\Event\Media\GetAlbumArt;
 use App\Exception\Http\RateLimitExceededException;
+use GuzzleHttp\Exception\ConnectException;
 use RuntimeException;
 use Throwable;
 
@@ -49,6 +50,21 @@ abstract class AbstractAlbumArtHandler
             if (
                 $e instanceof RateLimitExceededException
                 || false !== stripos($e->getMessage(), 'rate limit')
+            ) {
+                return;
+            }
+
+            // A slow or unreachable art service is that SERVICE's problem,
+            // not the track's: soft-skip so the next handler in the chain
+            // still gets its chance, instead of aborting the whole lookup
+            // (which also negative-caches the song for two weeks upstream
+            // in RemoteAlbumArt). Observed live: Cover Art Archive
+            // (archive.org) timeouts were stealing art from tracks Deezer
+            // or Last.fm could have served.
+            if (
+                $e instanceof ConnectException
+                || false !== stripos($e->getMessage(), 'timed out')
+                || false !== stripos($e->getMessage(), 'timeout')
             ) {
                 return;
             }
