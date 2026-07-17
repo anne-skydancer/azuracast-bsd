@@ -22,6 +22,11 @@ pub struct TrackMetadata {
     pub media_id: Option<String>,
     pub sq_id: Option<String>,
     pub playlist_id: Option<String>,
+    /// The media row's unique id (PHP-side `StationMedia::unique_id`),
+    /// used to build the track's album-art URL for in-band art embedding
+    /// (see `pipeline.rs::publish_now_playing` / `output.rs`). Not part
+    /// of the `feedback` payload.
+    pub media_unique_id: Option<String>,
 }
 
 impl TrackMetadata {
@@ -33,6 +38,7 @@ impl TrackMetadata {
             media_id: a.get("media_id").map(|s| s.to_string()),
             sq_id: a.get("sq_id").map(|s| s.to_string()),
             playlist_id: a.get("playlist_id").map(|s| s.to_string()),
+            media_unique_id: a.get("media_unique_id").map(|s| s.to_string()),
         }
     }
 
@@ -243,10 +249,8 @@ mod tests {
         let mut meta = TrackMetadata {
             title: Some("Old Title".to_string()),
             artist: Some("Old Artist".to_string()),
-            song_id: None,
             media_id: Some("media-1".to_string()),
-            sq_id: None,
-            playlist_id: None,
+            ..Default::default()
         };
 
         let mut overrides = HashMap::new();
@@ -266,11 +270,7 @@ mod tests {
     fn apply_overrides_empty_map_is_noop() {
         let mut meta = TrackMetadata {
             title: Some("Title".to_string()),
-            artist: None,
-            song_id: None,
-            media_id: None,
-            sq_id: None,
-            playlist_id: None,
+            ..Default::default()
         };
         meta.apply_overrides(&HashMap::new());
         assert_eq!(meta.title, Some("Title".to_string()));

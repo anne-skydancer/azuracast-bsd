@@ -104,6 +104,11 @@ final class Annotations implements EventSubscriberInterface
             'duration' => $duration,
             'song_id' => $media->song_id,
             'media_id' => $media->id,
+            // Lets the engine build this track's album-art URL
+            // (/api/station/{id}/art/{unique_id}) and embed the image
+            // in-band for formats that support it (chained-Ogg
+            // METADATA_BLOCK_PICTURE) -- see engine/src/output.rs.
+            'media_unique_id' => $media->unique_id,
             'sq_id' => $event->getQueue()?->id,
             ...$this->processAutocueAnnotations(
                 $station,

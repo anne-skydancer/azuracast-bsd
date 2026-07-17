@@ -100,6 +100,10 @@ pub struct Pipeline {
     /// ordinary players (VLC etc.) see song titles -- see `output.rs`'s
     /// "Now-playing metadata" module doc and `publish_now_playing` below.
     now_playing: watch::Sender<NowPlaying>,
+    /// `{callbacks.base_url}/api/station/{station_id}/art` -- prefix for
+    /// per-track album-art URLs (completed with the media unique id in
+    /// `publish_now_playing`), fetched by in-band-capable output targets.
+    art_url_base: String,
     /// Post-cutover audio post-processing (`nrj`/`stereo_tool`/none) -- see
     /// `audio_processing.rs`. One instance for the whole pipeline lifetime
     /// (never reset per-track), since both `NrjProcessor`'s smoothed
@@ -142,6 +146,11 @@ impl Pipeline {
             feedback: FeedbackDedup::new(),
             audio_tap,
             now_playing,
+            art_url_base: format!(
+                "{}/api/station/{}/art",
+                cfg.callbacks.base_url.trim_end_matches('/'),
+                cfg.callbacks.station_id
+            ),
             audio_processor: AudioProcessor::from_config(&cfg.audio_processing),
             audio_include_live: cfg.audio_processing.include_live,
         }
@@ -164,6 +173,11 @@ impl Pipeline {
         let np = NowPlaying {
             title: track.metadata.title.clone(),
             artist: track.metadata.artist.clone(),
+            art_url: track
+                .metadata
+                .media_unique_id
+                .as_ref()
+                .map(|uid| format!("{}/{}", self.art_url_base, uid)),
         };
         self.now_playing.send_if_modified(|cur| {
             if *cur == np {

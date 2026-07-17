@@ -121,14 +121,28 @@ const UPDINFO_TIMEOUT: Duration = Duration::from_secs(5);
 /// connection attempt is abandoned and the normal reconnect loop recovers.
 const ENCODER_FLUSH_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Per-fetch timeout for a track's album-art image. Art is decorative:
+/// a slow art server must never delay an encoder restart by more than
+/// this.
+const ART_FETCH_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Upper bound on an embedded art image. METADATA_BLOCK_PICTURE rides in
+/// the chained link's header pages (and base64 inflates it by ~33%), so
+/// something pathological like a 10MB scan shouldn't be forced onto every
+/// listener at every track change.
+const ART_MAX_BYTES: usize = 512 * 1024;
+
 /// The title/artist pair every output target watches for song changes --
 /// the stream-facing counterpart of the `feedback` callback's payload,
 /// published by `pipeline.rs::publish_now_playing` on the same track
-/// boundaries (with the same jingle/error-file suppression).
+/// boundaries (with the same jingle/error-file suppression). `art_url`
+/// points at the PHP side's album-art endpoint for the track, fetched by
+/// in-band-capable output targets (see this module's doc).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NowPlaying {
     pub title: Option<String>,
     pub artist: Option<String>,
+    pub art_url: Option<String>,
 }
 
 impl NowPlaying {
@@ -253,7 +267,10 @@ impl OutputFormat {
 /// -- for the Ogg family that's the Vorbis comments listeners' players
 /// actually display; for other containers it's harmless start-of-stream
 /// tagging. `ogg_serial_offset` disambiguates consecutive chained-Ogg
-/// links (see this module's doc) and is only emitted for Ogg containers.
+/// links (see this module's doc) and is only emitted for Ogg containers,
+/// as is `art_picture_b64` (a pre-built METADATA_BLOCK_PICTURE value:
+/// in-band album art is an Ogg-family concept; other containers have no
+/// channel for it).
 pub fn ffmpeg_args(
     format: OutputFormat,
     bitrate_kbps: u32,
@@ -261,6 +278,7 @@ pub fn ffmpeg_args(
     channels: u16,
     song: &NowPlaying,
     ogg_serial_offset: u32,
+    art_picture_b64: Option<&str>,
 ) -> Vec<String> {
     let mut args = vec![
         "-hide_banner".to_string(),
@@ -287,6 +305,10 @@ pub fn ffmpeg_args(
     if format.container() == "ogg" {
         args.push("-serial_offset".to_string());
         args.push(ogg_serial_offset.to_string());
+        if let Some(picture) = art_picture_b64 {
+            args.push("-metadata".to_string());
+            args.push(format!("METADATA_BLOCK_PICTURE={picture}"));
+        }
     }
     args.push("-f".to_string());
     args.push(format.container().to_string());
@@ -419,7 +441,12 @@ async fn connect_and_handshake(target: &IcecastTarget) -> Result<TcpStream, Stri
 /// chatty on stderr even at `-loglevel error` in some builds; nothing in
 /// this engine consumes it, matching `harbor.rs`'s general "don't record
 /// diagnostic noise nobody reads" posture).
-fn build_ffmpeg_command(target: &IcecastTarget, song: &NowPlaying, ogg_serial_offset: u32) -> Command {
+fn build_ffmpeg_command(
+    target: &IcecastTarget,
+    song: &NowPlaying,
+    ogg_serial_offset: u32,
+    art_picture_b64: Option<&str>,
+) -> Command {
     // A link with no tags at all (engine startup: outputs connect before
     // the first track resolves) would leave players showing an unset/
     // whatever-comes-first title -- introduce the stream by station name
@@ -438,11 +465,68 @@ fn build_ffmpeg_command(target: &IcecastTarget, song: &NowPlaying, ogg_serial_of
         PIPELINE_CHANNELS,
         &effective,
         ogg_serial_offset,
+        art_picture_b64,
     ));
     cmd.stdin(Stdio::piped());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::null());
     cmd
+}
+
+/// Builds the value of a `METADATA_BLOCK_PICTURE` Vorbis comment: a FLAC
+/// picture block (picture type 3 = front cover), base64-encoded, per the
+/// xiph.org convention for album art in Ogg streams. Width/height/depth/
+/// color-count are left 0 ("unknown"), which players accept. Pure/
+/// unit-testable.
+pub fn build_metadata_block_picture(mime: &str, data: &[u8]) -> String {
+    let mime_bytes = mime.as_bytes();
+    let mut block: Vec<u8> = Vec::with_capacity(32 + mime_bytes.len() + data.len());
+    block.extend_from_slice(&3u32.to_be_bytes()); // picture type: front cover
+    block.extend_from_slice(&(mime_bytes.len() as u32).to_be_bytes());
+    block.extend_from_slice(mime_bytes);
+    block.extend_from_slice(&0u32.to_be_bytes()); // description length (empty)
+    block.extend_from_slice(&0u32.to_be_bytes()); // width
+    block.extend_from_slice(&0u32.to_be_bytes()); // height
+    block.extend_from_slice(&0u32.to_be_bytes()); // color depth
+    block.extend_from_slice(&0u32.to_be_bytes()); // color count
+    block.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    block.extend_from_slice(data);
+    STANDARD.encode(block)
+}
+
+/// Fetches a track's album art and returns it as a ready-to-embed
+/// `METADATA_BLOCK_PICTURE` value, or `None` on any failure (missing art,
+/// slow server, oversized image) -- art is decorative and must never
+/// block or break the audio path.
+async fn fetch_art_picture(http: &reqwest::Client, art_url: Option<&str>) -> Option<String> {
+    let url = art_url?;
+    let resp = http
+        .get(url)
+        .timeout(ART_FETCH_TIMEOUT)
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let mime = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/jpeg")
+        .split(';')
+        .next()
+        .unwrap_or("image/jpeg")
+        .trim()
+        .to_string();
+    if !mime.starts_with("image/") {
+        return None;
+    }
+    let bytes = resp.bytes().await.ok()?;
+    if bytes.is_empty() || bytes.len() > ART_MAX_BYTES {
+        return None;
+    }
+    Some(build_metadata_block_picture(&mime, &bytes))
 }
 
 /// Fire-and-forget out-of-band ICY metadata push to Icecast's
@@ -566,6 +650,14 @@ async fn run_output_once(
 
     let http = reqwest::Client::new();
 
+    // In-band album art for the current song (Ogg family only), fetched
+    // once per song change and embedded in each chained link's tags.
+    let mut art_picture: Option<String> = if target.format.inband_metadata() {
+        fetch_art_picture(&http, song.art_url.as_deref()).await
+    } else {
+        None
+    };
+
     // We only write to the connection after the handshake; the read half is
     // dropped (which does NOT shut the socket down -- only dropping the
     // write half would). The write half round-trips through each
@@ -579,7 +671,7 @@ async fn run_output_once(
     let mut generation: u32 = 0;
 
     loop {
-        let mut child = build_ffmpeg_command(target, &song, generation)
+        let mut child = build_ffmpeg_command(target, &song, generation, art_picture.as_deref())
             .spawn()
             .map_err(|e| format!("failed to spawn ffmpeg: {e}"))?;
         generation = generation.wrapping_add(1);
@@ -679,6 +771,10 @@ async fn run_output_once(
                     Ok(Ok((Ok(_), wh))) => {
                         let _ = child.wait().await;
                         write_half = wh;
+                        // Fetch the new song's art while the connection idles
+                        // between links -- bounded by ART_FETCH_TIMEOUT, and
+                        // the tap buffers PCM meanwhile.
+                        art_picture = fetch_art_picture(&http, song.art_url.as_deref()).await;
                         tracing::info!(
                             "output[{}]: restarted encoder for new metadata: {}",
                             target.label,
@@ -932,7 +1028,7 @@ mod tests {
 
     #[test]
     fn ffmpeg_args_mp3_uses_libmp3lame_and_mp3_container() {
-        let args = ffmpeg_args(OutputFormat::Mp3, 128, 44100, 2, &no_song(), 0);
+        let args = ffmpeg_args(OutputFormat::Mp3, 128, 44100, 2, &no_song(), 0, None);
         assert!(args.windows(2).any(|w| w == ["-c:a", "libmp3lame"]));
         assert!(args.windows(2).any(|w| w == ["-b:a", "128k"]));
         assert!(args.windows(2).any(|w| w == ["-f", "mp3"]));
@@ -943,28 +1039,28 @@ mod tests {
 
     #[test]
     fn ffmpeg_args_aac_uses_adts_container() {
-        let args = ffmpeg_args(OutputFormat::Aac, 160, 44100, 2, &no_song(), 0);
+        let args = ffmpeg_args(OutputFormat::Aac, 160, 44100, 2, &no_song(), 0, None);
         assert!(args.windows(2).any(|w| w == ["-c:a", "aac"]));
         assert!(args.windows(2).any(|w| w == ["-f", "adts"]));
     }
 
     #[test]
     fn ffmpeg_args_ogg_uses_libvorbis_and_ogg_container() {
-        let args = ffmpeg_args(OutputFormat::Ogg, 128, 44100, 2, &no_song(), 0);
+        let args = ffmpeg_args(OutputFormat::Ogg, 128, 44100, 2, &no_song(), 0, None);
         assert!(args.windows(2).any(|w| w == ["-c:a", "libvorbis"]));
         assert!(args.windows(2).any(|w| w == ["-f", "ogg"]));
     }
 
     #[test]
     fn ffmpeg_args_opus_uses_libopus_and_ogg_container() {
-        let args = ffmpeg_args(OutputFormat::Opus, 96, 44100, 2, &no_song(), 0);
+        let args = ffmpeg_args(OutputFormat::Opus, 96, 44100, 2, &no_song(), 0, None);
         assert!(args.windows(2).any(|w| w == ["-c:a", "libopus"]));
         assert!(args.windows(2).any(|w| w == ["-f", "ogg"]));
     }
 
     #[test]
     fn ffmpeg_args_flac_has_no_bitrate_flag() {
-        let args = ffmpeg_args(OutputFormat::Flac, 0, 44100, 2, &no_song(), 0);
+        let args = ffmpeg_args(OutputFormat::Flac, 0, 44100, 2, &no_song(), 0, None);
         assert!(args.windows(2).any(|w| w == ["-c:a", "flac"]));
         assert!(args.windows(2).any(|w| w == ["-f", "flac"]));
         assert!(!args.iter().any(|a| a == "-b:a"));
@@ -975,8 +1071,9 @@ mod tests {
         let song = NowPlaying {
             title: Some("Thunderstruck".to_string()),
             artist: Some("AC/DC".to_string()),
+            ..Default::default()
         };
-        let args = ffmpeg_args(OutputFormat::Ogg, 320, 44100, 2, &song, 3);
+        let args = ffmpeg_args(OutputFormat::Ogg, 320, 44100, 2, &song, 3, None);
         assert!(args.windows(2).any(|w| w == ["-metadata", "title=Thunderstruck"]));
         assert!(args.windows(2).any(|w| w == ["-metadata", "artist=AC/DC"]));
         // Chained-Ogg links need distinct serial numbers.
@@ -986,14 +1083,14 @@ mod tests {
     #[test]
     fn ffmpeg_args_omit_metadata_and_serial_when_not_applicable() {
         // No song info -> no -metadata args at all.
-        let args = ffmpeg_args(OutputFormat::Ogg, 320, 44100, 2, &no_song(), 0);
+        let args = ffmpeg_args(OutputFormat::Ogg, 320, 44100, 2, &no_song(), 0, None);
         assert!(!args.iter().any(|a| a == "-metadata"));
         // Non-Ogg container -> no -serial_offset even with a song set.
         let song = NowPlaying {
             title: Some("T".to_string()),
-            artist: None,
+            ..Default::default()
         };
-        let args = ffmpeg_args(OutputFormat::Mp3, 128, 44100, 2, &song, 5);
+        let args = ffmpeg_args(OutputFormat::Mp3, 128, 44100, 2, &song, 5, None);
         assert!(!args.iter().any(|a| a == "-serial_offset"));
         assert!(args.windows(2).any(|w| w == ["-metadata", "title=T"]));
     }
@@ -1010,15 +1107,43 @@ mod tests {
     }
 
     #[test]
+    fn metadata_block_picture_encodes_a_valid_flac_picture_block() {
+        let data = [0xFFu8, 0xD8, 0xFF, 0xE0]; // JPEG magic prefix
+        let b64 = build_metadata_block_picture("image/jpeg", &data);
+        let block = STANDARD.decode(&b64).expect("valid base64");
+        // Picture type 3 (front cover), then mime length + mime.
+        assert_eq!(&block[0..4], &3u32.to_be_bytes());
+        assert_eq!(&block[4..8], &(10u32).to_be_bytes());
+        assert_eq!(&block[8..18], b"image/jpeg");
+        // Trailing: data length + data.
+        let n = block.len();
+        assert_eq!(&block[n - 4..], &data);
+        assert_eq!(&block[n - 8..n - 4], &(4u32).to_be_bytes());
+    }
+
+    #[test]
+    fn ffmpeg_args_embed_art_only_for_ogg_containers() {
+        let song = NowPlaying {
+            title: Some("T".to_string()),
+            ..Default::default()
+        };
+        let args = ffmpeg_args(OutputFormat::Ogg, 320, 44100, 2, &song, 0, Some("QUJD"));
+        assert!(args.iter().any(|a| a == "METADATA_BLOCK_PICTURE=QUJD"));
+        let args = ffmpeg_args(OutputFormat::Mp3, 128, 44100, 2, &song, 0, Some("QUJD"));
+        assert!(!args.iter().any(|a| a.starts_with("METADATA_BLOCK_PICTURE")));
+    }
+
+    #[test]
     fn now_playing_song_string_formats() {
         let both = NowPlaying {
             title: Some("Title".to_string()),
             artist: Some("Artist".to_string()),
+            ..Default::default()
         };
         assert_eq!(both.song_string().as_deref(), Some("Artist - Title"));
         let title_only = NowPlaying {
             title: Some("Title".to_string()),
-            artist: None,
+            ..Default::default()
         };
         assert_eq!(title_only.song_string().as_deref(), Some("Title"));
         assert_eq!(NowPlaying::default().song_string(), None);
@@ -1140,7 +1265,7 @@ mod tests {
             return;
         }
 
-        let mut child = build_ffmpeg_command(&test_target(OutputFormat::Mp3), &no_song(), 0)
+        let mut child = build_ffmpeg_command(&test_target(OutputFormat::Mp3), &no_song(), 0, None)
             .spawn()
             .expect("ffmpeg should spawn");
 
