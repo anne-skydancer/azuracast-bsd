@@ -27,8 +27,12 @@
 #   4. Create the sentinel ONCE on the NAS share (while mounted):
 #        touch /mnt/vault-music/.media-source-online
 #      The sentinel is the mount guard -- see SAFETY below.
-#   5. First sync by hand (long -- full library copy):
-#        /usr/local/sbin/azuracast-media-sync
+#   5. First sync by hand (long -- full library copy). ALWAYS launch
+#      manual runs through the SAME lockf the cron line uses -- a
+#      lockless manual run and a cron firing mid-copy means two rsyncs
+#      fighting over the same target (learned live on the reference
+#      install):
+#        lockf -t 0 /var/run/azuracast-media-sync.lock /usr/local/sbin/azuracast-media-sync
 #   6. Cron it (root's crontab on the host), e.g. every 20 minutes;
 #      lockf(1) (base system) prevents overlapping runs, -t 0 makes an
 #      already-running sync simply skip this cycle:

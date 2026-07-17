@@ -218,15 +218,18 @@ final class Configuration
             // Upstream writes autostart=false for everything and relies on the PHP side
             // starting the group right after writing the config -- fine when PHP and
             // supervisord share one host and one lifetime (Docker). In the split-jail
-            // deployment the FRONTEND's supervisord lives in a separate jail with its own
-            // boot timeline: after a cold host boot it loads this config long after the
-            // webapp rc.d's radio:restart already fired, so the frontend sat STOPPED until
-            // a human noticed (confirmed on the reference install, repeatedly -- its host
-            // suffers real power cuts). Frontend programs therefore autostart: a booted
-            // supervisord brings its own station frontend up with no cross-jail
-            // choreography. Backends keep upstream semantics -- the webapp jail's own
-            // rc.d poststart already handles them, in the right order, after DB wait.
-            'autostart' => ($adapter instanceof Frontend\AbstractFrontend) ? 'true' : 'false',
+            // deployment each supervisord has its own boot timeline, and cold host boots
+            // proved BOTH halves of the PHP-driven start unreliable (reference install,
+            // real power cuts): the frontend's supervisord loads this config long after
+            // the webapp rc.d's radio:restart already fired, and that radio:restart
+            // itself can abort mid-flight when the remote (still-booting) icecast jail's
+            // supervisord refuses its XML-RPC connection -- observed leaving the BACKEND
+            // stopped too. So: every generated station program autostarts, and a booted
+            // supervisord brings its own programs up with zero cross-jail choreography.
+            // Trade-off, accepted deliberately: a station an operator stopped by hand
+            // resumes after a jail/host reboot -- for a radio appliance, coming back
+            // playing is the right default.
+            'autostart' => 'true',
             'autorestart' => 'true',
             'stdout_logfile' => $adapter->getLogPath($station),
             'stdout_logfile_maxbytes' => '5MB',
