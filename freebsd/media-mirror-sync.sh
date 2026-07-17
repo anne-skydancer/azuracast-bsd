@@ -90,9 +90,17 @@ echo "$(stamp) sync starting: ${MEDIA_SOURCE}/ -> ${MIRROR_PATH}/"
 #              and PHP gets "Failed to open directory: Permission
 #              denied" on its own media dir (confirmed live) -- and any
 #              manual chown gets silently reverted by the next sync.
+# /.albumart is AzuraCast's own data written INTO the storage location
+# (fetched/extracted cover art, keyed by media unique id) -- it exists
+# only on the mirror side, so without this exclude every sync cycle
+# deleted the freshly-fetched art as "not present on the source"
+# (confirmed live: art appeared, then vanished within 20 minutes).
+# Excluded patterns are also protected from --delete, which is exactly
+# the needed behavior: never copied, never deleted.
 rsync -a --delete --partial \
     --chown 1001:1001 \
     --exclude "/${SENTINEL}" \
+    --exclude "/.albumart" \
     "${MEDIA_SOURCE}/" "${MIRROR_PATH}/"
 
 echo "$(stamp) sync complete"
