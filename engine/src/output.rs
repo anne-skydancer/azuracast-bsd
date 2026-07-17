@@ -420,13 +420,23 @@ async fn connect_and_handshake(target: &IcecastTarget) -> Result<TcpStream, Stri
 /// this engine consumes it, matching `harbor.rs`'s general "don't record
 /// diagnostic noise nobody reads" posture).
 fn build_ffmpeg_command(target: &IcecastTarget, song: &NowPlaying, ogg_serial_offset: u32) -> Command {
+    // A link with no tags at all (engine startup: outputs connect before
+    // the first track resolves) would leave players showing an unset/
+    // whatever-comes-first title -- introduce the stream by station name
+    // instead, so no listener ever meets it nameless. Real track metadata
+    // takes over from the first genuine now-playing publish.
+    let mut effective = song.clone();
+    if effective.title.is_none() && effective.artist.is_none() && !target.stream_name.is_empty() {
+        effective.title = Some(target.stream_name.clone());
+    }
+
     let mut cmd = Command::new("ffmpeg");
     cmd.args(ffmpeg_args(
         target.format,
         target.bitrate,
         PIPELINE_SAMPLE_RATE,
         PIPELINE_CHANNELS,
-        song,
+        &effective,
         ogg_serial_offset,
     ));
     cmd.stdin(Stdio::piped());
