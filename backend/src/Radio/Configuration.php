@@ -215,7 +215,18 @@ final class Configuration
                 'TZ' => $station->timezone,
                 ...$adapter->getEnvironmentVariables($station),
             ]),
-            'autostart' => 'false',
+            // Upstream writes autostart=false for everything and relies on the PHP side
+            // starting the group right after writing the config -- fine when PHP and
+            // supervisord share one host and one lifetime (Docker). In the split-jail
+            // deployment the FRONTEND's supervisord lives in a separate jail with its own
+            // boot timeline: after a cold host boot it loads this config long after the
+            // webapp rc.d's radio:restart already fired, so the frontend sat STOPPED until
+            // a human noticed (confirmed on the reference install, repeatedly -- its host
+            // suffers real power cuts). Frontend programs therefore autostart: a booted
+            // supervisord brings its own station frontend up with no cross-jail
+            // choreography. Backends keep upstream semantics -- the webapp jail's own
+            // rc.d poststart already handles them, in the right order, after DB wait.
+            'autostart' => ($adapter instanceof Frontend\AbstractFrontend) ? 'true' : 'false',
             'autorestart' => 'true',
             'stdout_logfile' => $adapter->getLogPath($station),
             'stdout_logfile_maxbytes' => '5MB',
