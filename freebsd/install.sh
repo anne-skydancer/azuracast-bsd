@@ -113,7 +113,9 @@ in_jail_sh() {
 
 [ "$(id -u)" = "0" ] || die "run as root on the FreeBSD host."
 [ "$(uname -s)" = "FreeBSD" ] || die "this installer is for FreeBSD hosts."
-[ -f "${SCRIPT_DIR}/env.conf" ] || die "freebsd/env.conf not found."
+[ -f "${SCRIPT_DIR}/env.conf" ] || die "freebsd/env.conf not found.
+       Copy freebsd/env.conf.example to freebsd/env.conf and edit it to match
+       your own jail/network layout first (see freebsd/README.md)."
 
 . "${SCRIPT_DIR}/env.conf"
 

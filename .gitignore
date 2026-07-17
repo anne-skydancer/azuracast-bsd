@@ -60,3 +60,4 @@ tmp/cache/*---*
 /plugins/*
 /plugins/**/*
 !/plugins/.gitkeep
+freebsd/env.conf

@@ -20,8 +20,17 @@ full manual walkthrough the installer automates.
 ## Before you do anything else
 
 Every IP, hostname, path, and epair interface used across this whole
-`freebsd/` tree lives in one place: [`freebsd/env.conf`](env.conf).
-**The values shipped in that file are not real** — they're IETF
+`freebsd/` tree lives in one place: `freebsd/env.conf` — which you
+create by copying the tracked template:
+
+```sh
+cp freebsd/env.conf.example freebsd/env.conf
+```
+
+Your copy is `.gitignore`d, so your real topology never collides with
+upstream changes to the template (a lesson from the reference install's
+first `git pull` conflict).
+**The values shipped in the template are not real** — they're IETF
 documentation-reserved placeholders (`192.0.2.0/24` / `2001:db8::/32` per
 RFC 5737/3849, plus the reserved `example.com` domain per RFC 2606), used
 specifically so this repository never has to contain anyone's actual

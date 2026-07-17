@@ -56,6 +56,13 @@ set -e
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
+if [ ! -f "${SCRIPT_DIR}/../env.conf" ]; then
+    echo "ERROR: freebsd/env.conf not found." >&2
+    echo "Copy freebsd/env.conf.example to freebsd/env.conf and edit it to" >&2
+    echo "match your own jail/network layout first (see freebsd/README.md)." >&2
+    exit 1
+fi
+
 . "${SCRIPT_DIR}/../env.conf"
 
 DB_NAME="${AZURACAST_DB_NAME:-$AZURACAST_DB_NAME_DEFAULT}"

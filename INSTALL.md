@@ -54,10 +54,16 @@ picking up mid-way when something environment-specific needs a human.
 - A GitHub account with access to your fork of this repository (public: nothing extra needed;
   private: an SSH deploy key or personal access token — see step 5 below).
 
-## 1. Review and edit `freebsd/env.conf`
+## 1. Create and edit `freebsd/env.conf`
+
+```sh
+cp freebsd/env.conf.example freebsd/env.conf
+```
 
 Every IP, hostname, path, and epair interface number used across the whole `freebsd/` tree comes
-from this one file. **The values shipped in it are not real** — they're placeholders drawn
+from this one file. Your copy is `.gitignore`d — deliberately, so your real network topology is
+never committed and never collides with upstream changes to the template. **The values shipped in
+the template are not real** — they're placeholders drawn
 deliberately from IETF's documentation-reserved ranges (`192.0.2.0/24` / `2001:db8::/32`, RFC
 5737/3849) and the reserved `example.com` domain (RFC 2606), specifically so this repository never
 has to contain anyone's actual network topology. They are guaranteed by IETF to never be assigned
