@@ -125,6 +125,14 @@ mirror on the host and nullfs-mount *that* into the jail:
 NAS (source of truth) --rsync, cron--> local mirror --nullfs--> jail media path
 ```
 
+Where the library lives is AzuraCast's own concern, and it already has
+answers: every station automatically gets (and registers)
+`/var/azuracast/stations/<short_name>/media` at creation — web/SFTP
+uploads land there with zero setup — and a *custom storage location*
+(any path, registerable in the UI, shareable across stations) covers
+externally-supplied libraries. The mirror below is just one way to
+supply such a path.
+
 [`media-mirror-sync.sh`](media-mirror-sync.sh) is the host-side sync
 script — sentinel-guarded so an unmounted NAS can never trick
 `rsync --delete` into emptying the mirror; its header is the full

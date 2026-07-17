@@ -34,8 +34,9 @@
 #      already-running sync simply skip this cycle:
 #        */20 * * * * lockf -t 0 /var/run/azuracast-media-sync.lock /usr/local/sbin/azuracast-media-sync >> /var/log/azuracast-media-sync.log 2>&1
 #   7. Point the jail's media mount at the mirror: in the webapp jail's
-#      stanza, change the nullfs source for the media path from the NFS
-#      mountpoint to MIRROR_PATH, then `service jail restart <jail>`
+#      stanza, nullfs-mount MIRROR_PATH onto whatever in-jail path the
+#      station's Media storage location already uses (replacing any
+#      direct NFS mount there), then `service jail restart <jail>`
 #      (same path INSIDE the jail -- AzuraCast notices nothing).
 #
 # SAFETY -- the --delete trap this script exists to avoid: rsync with
