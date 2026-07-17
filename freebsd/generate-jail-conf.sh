@@ -45,6 +45,14 @@ render() {
         -e "s|@@WEBAPP_JAIL_NETMASK@@|${WEBAPP_JAIL_NETMASK}|g" \
         -e "s|@@WEBAPP_JAIL_IP6@@|${WEBAPP_JAIL_IP6}|g" \
         -e "s|@@WEBAPP_JAIL_IP6_PREFIX@@|${WEBAPP_JAIL_IP6_PREFIX}|g" \
+        -e "s|@@INTEGRATED_JAIL_NAME@@|${INTEGRATED_JAIL_NAME}|g" \
+        -e "s|@@INTEGRATED_JAIL_HOSTNAME@@|${INTEGRATED_JAIL_HOSTNAME}|g" \
+        -e "s|@@INTEGRATED_JAIL_PATH@@|${INTEGRATED_JAIL_PATH}|g" \
+        -e "s|@@INTEGRATED_JAIL_EPAIR@@|${INTEGRATED_JAIL_EPAIR}|g" \
+        -e "s|@@INTEGRATED_JAIL_IP@@|${INTEGRATED_JAIL_IP}|g" \
+        -e "s|@@INTEGRATED_JAIL_NETMASK@@|${INTEGRATED_JAIL_NETMASK}|g" \
+        -e "s|@@INTEGRATED_JAIL_IP6@@|${INTEGRATED_JAIL_IP6}|g" \
+        -e "s|@@INTEGRATED_JAIL_IP6_PREFIX@@|${INTEGRATED_JAIL_IP6_PREFIX}|g" \
         -e "s|@@VM_PUBLIC_BRIDGE@@|${VM_PUBLIC_BRIDGE}|g" \
         -e "s|@@DEFAULT_ROUTE_V4@@|${DEFAULT_ROUTE_V4}|g" \
         -e "s|@@DEFAULT_ROUTE_V6_GW@@|${DEFAULT_ROUTE_V6_GW}|g" \
@@ -72,3 +80,8 @@ generate_one() {
 
 generate_one mariadb
 generate_one webapp
+# The integrated (all-in-one-jail) alternative topology -- see
+# freebsd/install.sh. Rendered unconditionally (it's cheap and keeps the
+# reference output complete); only install the stanza for the topology
+# you actually chose.
+generate_one integrated

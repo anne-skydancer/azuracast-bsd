@@ -1,0 +1,28 @@
+@@INTEGRATED_JAIL_NAME@@ {
+    host.hostname = "@@INTEGRATED_JAIL_HOSTNAME@@";
+    path = "@@INTEGRATED_JAIL_PATH@@";
+
+    vnet;
+    vnet.interface = "@@INTEGRATED_JAIL_EPAIR@@b";
+
+    # exec.poststop (the normal epair cleanup) only runs when a jail that
+    # actually got created is removed -- a start attempt that fails partway
+    # (prestart half-done, jail creation error) leaves an orphaned epair
+    # behind that blocks every later start with "interface already exists".
+    # The destroy-if-present makes prestart self-healing against that
+    # (probe first rather than `destroy || true`, so a GENUINE destroy
+    # failure still aborts the start loudly instead of being masked;
+    # jail(8) runs exec.* commands via /bin/sh -c, so the shell syntax
+    # here is interpreted by a real shell).
+    exec.prestart  = "if ifconfig @@INTEGRATED_JAIL_EPAIR@@a >/dev/null 2>&1; then ifconfig @@INTEGRATED_JAIL_EPAIR@@a destroy; fi";
+    exec.prestart += "ifconfig @@INTEGRATED_JAIL_EPAIR@@ create";
+    exec.prestart += "ifconfig @@VM_PUBLIC_BRIDGE@@ addm @@INTEGRATED_JAIL_EPAIR@@a";
+    exec.prestart += "ifconfig @@INTEGRATED_JAIL_EPAIR@@a up";
+    exec.start    += "ifconfig @@INTEGRATED_JAIL_EPAIR@@b @@INTEGRATED_JAIL_IP@@/@@INTEGRATED_JAIL_NETMASK@@ up";
+    exec.start    += "ifconfig @@INTEGRATED_JAIL_EPAIR@@b inet6 @@INTEGRATED_JAIL_IP6@@/@@INTEGRATED_JAIL_IP6_PREFIX@@ up";
+    exec.start    += "route add default @@DEFAULT_ROUTE_V4@@";
+    exec.start    += "route add -6 default @@DEFAULT_ROUTE_V6_GW@@%@@INTEGRATED_JAIL_EPAIR@@b";
+    exec.start    += "/bin/sh /etc/rc";
+    exec.stop      = "/bin/sh /etc/rc.shutdown";
+    exec.poststop  = "ifconfig @@INTEGRATED_JAIL_EPAIR@@a destroy";
+}

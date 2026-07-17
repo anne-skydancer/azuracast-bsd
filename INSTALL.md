@@ -16,6 +16,32 @@ headroom, the combined TLS PEM) are all committed — following this document as
 the battle-tested configuration. Where a specific step was confirmed the hard way, the linked
 README says so.
 
+## Choosing a topology (and the guided installer)
+
+There are two supported layouts, and a guided installer that drives either one:
+
+```sh
+sh freebsd/install.sh --mode distributed   # or --mode integrated, or no flag to be asked
+```
+
+- **Distributed** (the reference deployment, and what the rest of this document describes
+  step-by-step): a `mariadb` jail, a `webapp` jail, and one Icecast jail per station. Best
+  isolation and blast-radius control; per-station Icecast jails remain a manual template
+  (`freebsd/icecast/README.md`) since they're typically pre-existing jails an installer shouldn't
+  reshape.
+- **Integrated**: everything — MariaDB (loopback-only), the web stack, the streaming engine, and
+  Icecast — inside **one** jail. No cross-jail nullfs mounts, no remote supervisord, station
+  frontends default to co-located `127.0.0.1`. Simpler; less isolation. *(For future reference:
+  the planned Linux/Docker sister project will offer this topology only — one container, no
+  distributed refinement.)*
+
+The installer runs as root **on the host**, gates every state change behind a confirmation
+prompt, can fetch/extract `base.txz` if a jail's rootfs doesn't exist yet, and executes the same
+per-component scripts this document walks through by hand. Either way, **edit `freebsd/env.conf`
+first** (step 1 below) — the installer refuses to run against the shipped placeholder addresses.
+The manual steps below remain the authoritative reference for what the installer does and for
+picking up mid-way when something environment-specific needs a human.
+
 ## Prerequisites
 
 - A FreeBSD host with jail support (plain `/etc/jail.conf`, VNET-per-jail — no bastille/iocage

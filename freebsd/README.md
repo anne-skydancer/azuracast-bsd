@@ -1,10 +1,21 @@
 # AzuraCast on FreeBSD jails (no Docker)
 
-This directory replaces AzuraCast's Docker Compose stack with three
-native FreeBSD jails on the same host as your existing per-station
-Icecast jails, sharing their `jail.conf` schema (VNET + `epairN`,
+This directory replaces AzuraCast's Docker Compose stack with native
+FreeBSD jails, sharing your host's `jail.conf` schema (VNET + `epairN`,
 static internal IPv4/IPv6, default routes via `DEFAULT_ROUTE_V4` in
 `env.conf`).
+
+Two topologies are supported — **distributed** (a `mariadb` jail + a
+`webapp` jail + one Icecast jail per station; the reference deployment,
+described throughout this directory) and **integrated** (everything in
+one jail; see `integrated/`). A guided installer drives either:
+
+```sh
+sh freebsd/install.sh            # prompts for the topology
+```
+
+See `INSTALL.md` at the repo root for the topology trade-offs and the
+full manual walkthrough the installer automates.
 
 ## Before you do anything else
 
