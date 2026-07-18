@@ -346,8 +346,14 @@ final class Configuration
             $frontendConfig = $station->frontend_config;
             $backendConfig = $station->backend_config;
 
+            // empty() rather than upstream's strict null check: the UI's
+            // broadcasting form serializes a blank port field as 0, which
+            // the null check treated as "assigned" -- observed live as a
+            // station whose engine tried to bind its control API to port
+            // 0+4=4 ("Permission denied") and crash-looped. Port 0 is
+            // never a real assignment; treat it as absent.
             $basePort = $frontendConfig->port;
-            if ($force || null === $basePort) {
+            if ($force || empty($basePort)) {
                 $basePort = $this->getFirstAvailableRadioPort($station);
 
                 $frontendConfig->port = $basePort;
@@ -355,13 +361,13 @@ final class Configuration
             }
 
             $djPort = $backendConfig->dj_port;
-            if ($force || null === $djPort) {
+            if ($force || empty($djPort)) {
                 $backendConfig->dj_port = $basePort + 5;
                 $station->backend_config = $backendConfig;
             }
 
             $telnetPort = $backendConfig->telnet_port;
-            if ($force || null === $telnetPort) {
+            if ($force || empty($telnetPort)) {
                 $backendConfig->telnet_port = $basePort + 4;
                 $station->backend_config = $backendConfig;
             }
