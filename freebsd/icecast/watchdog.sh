@@ -4,9 +4,21 @@
 #
 # Wedge watchdog for Icecast running under supervisord in a station's
 # Icecast jail. Install INSIDE the jail (e.g. /usr/local/sbin/
-# icecast-watchdog) and run it from the jail's root crontab every minute:
+# icecast-watchdog) and run it from the jail's root crontab every minute.
+#
+# For the FIRST station (port 8000, program station_1_frontend) the
+# defaults suffice:
 #
 #   * * * * * /usr/local/sbin/icecast-watchdog >> /var/log/azuracast/watchdog.log 2>&1
+#
+# For ANY OTHER station, set BOTH env overrides -- the port comes from
+# that station's assigned frontend port (8010, 8020, ...), and getting
+# WATCHDOG_URL wrong turns the guardian into an assassin: every probe of
+# the wrong port fails, and the watchdog restarts a perfectly healthy
+# Icecast every two minutes forever (confirmed live on station #2's
+# first day):
+#
+#   * * * * * env WATCHDOG_URL=http://127.0.0.1:8010/status-json.xsl WATCHDOG_PROGRAM=station_2_frontend /usr/local/sbin/icecast-watchdog >> /var/log/azuracast/watchdog.log 2>&1
 #
 # Why this exists -- confirmed twice on a real install (2026-07): the
 # FreeBSD port's Icecast 2.5 beta can wedge its HTTP request pipeline
