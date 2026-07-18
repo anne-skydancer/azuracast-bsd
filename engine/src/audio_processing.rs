@@ -198,6 +198,10 @@ pub struct NrjProcessor {
     window_sum_sq: f64,
     gain_db: f64,
     envelope: f64,
+    /// The total (normalize × compress) gain actually applied at the END
+    /// of the previous chunk -- the starting point for this chunk's
+    /// per-sample gain ramp (see `process`'s doc for why ramping exists).
+    applied_gain: f32,
 }
 
 impl NrjProcessor {
@@ -213,17 +217,20 @@ impl NrjProcessor {
             // window has filled.
             gain_db: NRJ_GAIN_MAX_DB,
             envelope: 0.0,
+            applied_gain: 1.0,
         }
     }
 
     /// Applies normalize+compress to `samples` (interleaved stereo `f32`)
-    /// in place. Chunk-level (not per-sample) gain updates: the
-    /// normalizer's smoothed gain and the compressor's envelope are each
-    /// recomputed once per call from the chunk's aggregate stats, then
-    /// applied uniformly across the chunk. That trades a little precision
-    /// against true per-sample adaptation for simplicity, and is reasonable
-    /// at the pipeline's actual chunk sizes (well within the 30ms analysis
-    /// window this is modeled on).
+    /// in place. Gain is ANALYZED once per chunk (aggregate RMS/peak) but
+    /// APPLIED as a per-sample linear ramp from the previous chunk's final
+    /// gain to this chunk's computed gain. The earlier uniform-per-chunk
+    /// application produced an audible ~10-steps/second gain staircase
+    /// whenever the level swept quickly -- confirmed live as "fade-in is
+    /// in steps" on a real station: a fade is exactly the stimulus that
+    /// makes the AGC chase hard, so consecutive 100ms chunks landed on
+    /// audibly different gains. Ramping keeps the cheap chunk-level
+    /// analysis while making the applied gain continuous.
     pub fn process(&mut self, samples: &mut [f32]) {
         if samples.is_empty() {
             return;
@@ -265,9 +272,17 @@ impl NrjProcessor {
         self.envelope = compressor_envelope_step(self.envelope, chunk_peak, comp_alpha);
         let total_gain = (normalize_gain * compressor_gain(self.envelope)) as f32;
 
-        for s in samples.iter_mut() {
-            *s *= total_gain;
+        // Per-sample ramp from last chunk's final gain to this chunk's
+        // target -- see this method's doc.
+        let start_gain = self.applied_gain;
+        let step = (total_gain - start_gain) / frames as f32;
+        for (f, frame) in samples.chunks_exact_mut(channels).enumerate() {
+            let g = start_gain + step * (f + 1) as f32;
+            for s in frame.iter_mut() {
+                *s *= g;
+            }
         }
+        self.applied_gain = total_gain;
     }
 }
 
